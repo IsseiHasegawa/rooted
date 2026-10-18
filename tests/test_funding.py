@@ -1,12 +1,20 @@
 from agents.funding.engine import allocate, load_data
 from shared.models import FundingRequest, LineItem
 
-ITEMS = [
+def arbor(cents: int) -> int:
+    return round(cents * 1.2 / 100) * 100  # whole dollars, like the contractor agent
+
+
+# Ids, categories and scopes match data/prices.json: grab bars are urgent, the rest is the full remodel.
+URGENT = [
     LineItem(id="grab_bar_tub", label="Grab bar (tub)", category="grab_bar", unit_price_cents=30_000),
     LineItem(id="grab_bar_toilet", label="Grab bar (toilet)", category="grab_bar", unit_price_cents=30_000),
-    LineItem(id="non_slip", label="Non-slip flooring", category="non_slip_flooring", unit_price_cents=120_000),
-    LineItem(id="tub_to_shower", label="Tub to shower", category="tub_to_shower", unit_price_cents=900_000, structural=True),
 ]
+FULL_ONLY = [
+    LineItem(id="non_slip_flooring", label="Non-slip flooring", category="non_slip_flooring", unit_price_cents=74_400),
+    LineItem(id="tub_to_shower", label="Tub to shower", category="tub_to_shower", unit_price_cents=300_000, structural=True),
+]
+ITEMS = URGENT + FULL_ONLY
 
 
 def req(**kw) -> FundingRequest:
@@ -20,17 +28,43 @@ def ids(res):
     return {m.program_id: m for m in res.matches}
 
 
-def test_maria_fully_covered_by_lacda():
+def test_maria_urgent_is_due_now_full_remodel_waits_for_grant():
     res = allocate(req())
     m = ids(res)
     assert "lacda_senior_grant" in m
-    assert m["lacda_senior_grant"].amount_cents <= 2_000_000
-    assert "tub_to_shower" in m["lacda_senior_grant"].covered_item_ids
-    assert "nhs_la_county_minor_repair" not in m  # LACDA already covered everything NHS could
-    assert res.covered_cents == res.total_cents == 1_080_000
-    assert res.family_share_cents == 0
-    assert set(res.funded_later_item_ids) == {i.id for i in ITEMS}
-    assert res.pay_now_item_ids == []
+    assert set(m["lacda_senior_grant"].covered_item_ids) == {"non_slip_flooring", "tub_to_shower"}
+    assert res.funded_later_item_ids == ["non_slip_flooring", "tub_to_shower"]
+    assert res.pay_now_item_ids == ["grab_bar_tub", "grab_bar_toilet"]
+    assert res.pay_now_cents == 60_000
+    assert res.family_share_cents == 60_000
+
+
+def test_pay_now_maria_urgent_only_with_ma_plan():
+    items = [
+        LineItem(id="grab_bar_tub", label="Grab bar", category="grab_bar", unit_price_cents=27_000),
+        LineItem(id="night_light", label="Night light", category="lighting", unit_price_cents=38_400),
+    ]
+    res = allocate(req(insurance_plan="sample_ma_plan_a", line_items=items))
+    assert res.total_cents == 65_400
+    assert ids(res)["sample_ma_plan_a"].amount_cents == 27_000
+    assert res.pay_now_cents == 38_400
+    assert res.funded_later_item_ids == []
+
+
+def test_pay_now_maria_full_scope_with_arbor_excludes_grant_items():
+    items = [LineItem(**{**i.dict(), "unit_price_cents": arbor(i.unit_price_cents)}) for i in ITEMS]
+    res = allocate(req(line_items=items))
+    assert "tub_to_shower" in res.funded_later_item_ids and "non_slip_flooring" in res.funded_later_item_ids
+    assert "tub_to_shower" not in res.pay_now_item_ids
+    assert res.pay_now_cents == 2 * arbor(30_000)
+    assert res.total_cents == sum(i.unit_price_cents for i in items)
+
+
+def test_pay_now_pasadena_renter():
+    res = allocate(req(community="Pasadena", tenure="renter", months_owned=0))
+    assert res.matches == []  # PICF only covers urgent categories, and urgent items are paid today
+    assert "tub_to_shower" in res.pay_now_item_ids  # structural work has no program for a renter
+    assert res.pay_now_cents == res.total_cents
 
 
 def test_money_adds_up_and_sources_present():
@@ -50,9 +84,7 @@ def test_pasadena_renter_not_lacda_eligible():
     m = ids(res)
     assert "lacda_senior_grant" not in m
     assert "nhs_la_county_minor_repair" not in m  # owners only
-    assert "picf_hud_home_modification" in m  # renters allowed
-    assert "tub_to_shower" not in m["picf_hud_home_modification"].covered_item_ids
-    assert res.family_share_cents >= 900_000  # structural work is not funded
+    assert res.family_share_cents == res.total_cents  # structural work has no program for a renter
 
 
 def test_income_over_limit_is_rejected():
@@ -85,27 +117,3 @@ def test_altadena_eligible_and_incorporated_pasadena_not():
 def test_household_of_five_uses_published_limit():
     assert "lacda_senior_grant" in ids(allocate(req(household_size=5, annual_income=140_000)))
     assert "lacda_senior_grant" not in ids(allocate(req(household_size=5, annual_income=150_000)))
-
-
-def test_pay_now_maria_urgent_with_ma_plan():
-    # Shape of the urgent quote: $270 of items the plan covers plus $384 it does not.
-    items = [
-        LineItem(id="grab_bar_tub", label="Grab bar", category="grab_bar", unit_price_cents=27_000),
-        LineItem(id="night_light", label="Night light", category="lighting", unit_price_cents=38_400),
-    ]
-    res = allocate(req(insurance_plan="sample_ma_plan_a", line_items=items))
-    assert res.total_cents == 65_400
-    assert ids(res)["sample_ma_plan_a"].amount_cents == 27_000
-    assert res.pay_now_cents == 38_400
-    assert res.family_share_cents < res.pay_now_cents  # NHS covers lighting, but only after an application
-
-
-def test_pay_now_pasadena_renter_equals_total_without_ma():
-    res = allocate(req(community="Pasadena", tenure="renter", months_owned=0))
-    assert res.pay_now_cents == res.total_cents  # PICF is funded later, so nothing reduces pay-now
-
-
-def test_pay_now_maria_grants_only_is_full_total():
-    res = allocate(req())
-    assert res.family_share_cents == 0
-    assert res.pay_now_cents == res.total_cents

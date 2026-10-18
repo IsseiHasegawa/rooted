@@ -5,6 +5,16 @@ from pathlib import Path
 from shared.models import FundingRequest, FundingResult, ProgramMatch
 
 DATA_PATH = Path(__file__).resolve().parent.parent.parent / "data" / "programs.json"
+PRICES_PATH = DATA_PATH.with_name("prices.json")
+
+
+def load_scopes(path: Path = PRICES_PATH) -> dict[str, str]:
+    """Item id -> "urgent" or "full" from data/prices.json. Unknown ids count as urgent."""
+    try:
+        with open(path) as f:
+            return {i["id"]: i.get("scope", "urgent") for i in json.load(f)["items"]}
+    except (OSError, KeyError, ValueError):
+        return {}
 
 
 def load_data(path: Path = DATA_PATH) -> dict:
@@ -57,10 +67,12 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
     # Insurance first (non-structural only), then grants in file order.
     programs = sorted(data["programs"], key=lambda p: 0 if p["kind"] == "insurance" else 1)
 
+    scopes = load_scopes()
     remaining = {i.id: _item_cost(i) for i in req.line_items}
     total = sum(remaining.values())
     matches: list[ProgramMatch] = []
     grant_item_ids: set[str] = set()
+    immediate_by_item: dict[str, int] = {}  # coverage from programs that pay now, per item
 
     for prog in programs:
         ok, _ = is_eligible(prog, req, data)
@@ -76,10 +88,15 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
                 continue
             if item.structural and not prog["structural_ok"]:
                 continue
+            # Urgent safety items are paid today; only the full remodel waits for a grant.
+            if prog["funded_later"] and scopes.get(item.id, "urgent") == "urgent":
+                continue
             take = min(cap, remaining[item.id])
             remaining[item.id] -= take
             cap -= take
             amount += take
+            if not prog["funded_later"]:
+                immediate_by_item[item.id] = immediate_by_item.get(item.id, 0) + take
             covered_ids.append(item.id)
         if amount == 0:
             continue
@@ -100,8 +117,11 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
 
     covered = sum(m.amount_cents for m in matches)
     all_ids = [i.id for i in req.line_items]
-    # Grants pay only after an application, so only non-funded_later programs reduce what is due now.
-    pay_now = total - sum(m.amount_cents for m in matches if not m.funded_later)
+    # Two tracks: items touched by a grant are funded after approval and stay out of the deposit.
+    # What is due now is the price of the remaining items minus what immediate programs cover on them.
+    pay_now_ids = [i for i in all_ids if i not in grant_item_ids]
+    cost = {i.id: _item_cost(i) for i in req.line_items}
+    pay_now = sum(cost[i] - immediate_by_item.get(i, 0) for i in pay_now_ids)
     return FundingResult(
         session_id=req.session_id,
         matches=matches,
@@ -109,6 +129,6 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
         covered_cents=covered,
         family_share_cents=total - covered,
         pay_now_cents=pay_now,
-        pay_now_item_ids=[i for i in all_ids if i not in grant_item_ids],
+        pay_now_item_ids=pay_now_ids,
         funded_later_item_ids=[i for i in all_ids if i in grant_item_ids],
     )
