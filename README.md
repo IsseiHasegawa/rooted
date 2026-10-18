@@ -38,19 +38,21 @@ Funding eligibility is plain Python over `data/programs.json`. No LLM decides wh
 
 ## Agents
 
-| Agent | Role | Address |
+| Agent | Role | Address (links to the Agentverse profile) |
 | --- | --- | --- |
-| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t` |
-| rooted-risk | STEADI scoring and room-by-room hazards | `agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj` |
-| rooted-visualizer | After images, hazard markers, cost waterfall chart | `agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6` |
-| rooted-funding | Grant and insurance benefit eligibility | `agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm` |
-| contractor-juniper | Quotes and negotiation (fictional, budget) | `agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9` |
-| contractor-mesa | Quotes and negotiation (fictional, fastest) | `agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv` |
-| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | `agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j` |
+| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | [`agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t`](https://agentverse.ai/agents/details/agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t/profile) |
+| rooted-risk | STEADI scoring and room-by-room hazards | [`agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj`](https://agentverse.ai/agents/details/agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj/profile) |
+| rooted-visualizer | After images, hazard markers, cost waterfall chart | [`agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6`](https://agentverse.ai/agents/details/agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6/profile) |
+| rooted-funding | Grant and insurance benefit eligibility | [`agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm`](https://agentverse.ai/agents/details/agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm/profile) |
+| contractor-juniper | Quotes and negotiation (fictional, budget) | [`agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9`](https://agentverse.ai/agents/details/agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9/profile) |
+| contractor-mesa | Quotes and negotiation (fictional, fastest) | [`agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv`](https://agentverse.ai/agents/details/agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv/profile) |
+| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | [`agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j`](https://agentverse.ai/agents/details/agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j/profile) |
 
-Addresses are derived from each agent's seed. TODO: add Agentverse profile URLs and the shared ASI:One chat URL once the agents are registered.
+Addresses are derived from each agent's seed. All seven are registered on Agentverse with a mailbox; only the orchestrator talks to ASI:One users, and the others talk to it over localhost.
 
 ## Try it
+
+Rooted's agents run in the ASI:One web app (asi1.ai); hackathon agents are not available in the ASI:One mobile app.
 
 1. Open ASI:One and pick the agent with the "To:" handle picker (search `rooted-orchestrator`). Pasting only an @address may be routed to the personal AI.
 2. Say: "My mom lives alone and I'm worried about her bathroom."
@@ -68,9 +70,26 @@ cp .env.example .env          # then fill in the keys listed in the file
 .venv/bin/python scripts/connect_mailboxes.py
 ```
 
-- Tests: `.venv/bin/python -m pytest tests -q`
-- Run the flow without ASI:One: `tests/sim_client.py`
-- TODO: document `scripts/demo_reset.py`, the demo script, and the `CONTRACTOR_OFFLINE=mesa` failover demo once P10 lands.
+- Unit tests only (no agents needed): `.venv/bin/python -m pytest tests -q --ignore=tests/sim_client.py`
+
+### Without ASI:One
+
+`tests/sim_client.py` plays the family in a chat with the running agents and clicks every card:
+
+| Mode | What it checks |
+| --- | --- |
+| `smoke` | Every agent answers one request, plus a contractor counter-offer and booking |
+| `flow` | Maria's demo path from intake to the payment step (`SIM_CHOICE=wait_picf` ends on the PICF checklist instead) |
+| `lowrisk` | A parent with nothing ticked ends on the low-risk card |
+| `pay` | `flow`, then the deposit, booking, `/complete` and the balance, with Stripe stubbed (start `run_all.py` with `ROOTED_PAYMENTS=stub`) |
+| `all` (default) | `smoke`, `flow` and `lowrisk` |
+
+### Demo operations
+
+- `DEMO_MODE=1`: the intake and split forms become optional and every blank field takes the demo profile (Maria, 82, East Los Angeles 90022, owner for 240 months, one person, $38,000, Sample plan A; two payers split evenly with Leo). Every agent still exchanges real messages; only typing is skipped. `SIM_DEMO=1 tests/sim_client.py pay` checks it.
+- Contractor failover: `CONTRACTOR_OFFLINE=mesa .venv/bin/python scripts/run_all.py` makes Mesa stop answering. After 15 s the orchestrator says so and compares the other two quotes. Killing the contractor-mesa process mid-run has the same effect.
+- Between runs: stop `run_all.py` (Ctrl+C), run `.venv/bin/python scripts/demo_reset.py`, start `run_all.py` again. It forgets every chat session and expires open Rooted checkouts in Stripe test mode (`--dry-run` shows what it would do). It refuses to run while the agents are up, because they would write their in-memory sessions back.
+- Demo run: `DEMO_MODE=1 CONTRACTOR_OFFLINE=mesa .venv/bin/python scripts/run_all.py`, then in ASI:One: "Start over", Continue on the blank intake, tick "fallen" and two or three more STEADI items, Find the fixes, bathroom b1, Full bathroom remodel too, Get 3 quotes, Arbor, Fix it now, Approve, Maria agrees, Send payment requests, pay with `4242 4242 4242 4242`. Send `/complete` to collect the balance.
 
 ## Data sources
 

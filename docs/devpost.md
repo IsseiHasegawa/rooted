@@ -24,6 +24,8 @@ Built with: uAgents, Agentverse, ASI:One, Agent Chat Protocol, Payment Protocol,
 Eligibility is Python over a JSON file, with unit tests for a homeowner in East Los Angeles and a renter in Pasadena. LACDA and PICF rules were checked against their pages. Where we could not verify a fact (NHS, the CMS memo), the data says so and the family is told to confirm with the program.
 
 ## Try it
+Rooted's agents run in the ASI:One web app (asi1.ai); hackathon agents are not available in the ASI:One mobile app.
+
 In ASI:One, pick the agent with the "To:" handle picker (search rooted-orchestrator), or open the shared chat linked below. Pasting only an @address may be routed to the personal AI. Say: "My mom lives alone and I'm worried about her bathroom." Use the demo parent: age 82, East Los Angeles, owner, one person living at home. The deposit uses embedded Stripe Checkout in test mode: pay with test card 4242 4242 4242 4242, any future expiry and any CVC. No real money moves.
 
 ## Challenges
@@ -47,8 +49,8 @@ Agents are most useful when each one has a narrow job and a clear message contra
 Medicare Advantage plans are SAMPLE plans, contractors are fictional (priced from national market rates), payments run in Stripe test mode, and Rooted does not check the LACDA single-family, condominium or townhome requirement. Rooted is not medical advice and does not replace an occupational therapist.
 
 ## Links
-- GitHub: TODO
+- GitHub: https://github.com/IsseiHasegawa/rooted
 - Demo video (3-5 min): TODO
 - ASI:One chat share URL: TODO
-- Agentverse agent URL: TODO
+- Agentverse agent URL: https://agentverse.ai/agents/details/agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t/profile
 - Devpost URL and tracks: TODO (confirm multi-track entry with organizers)
