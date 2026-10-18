@@ -5,9 +5,7 @@
 
 **Help aging parents stay safe at home, from fall-risk check to a booked, paid contractor, in one ASI:One chat.**
 
-Demo video: TODO · Devpost: TODO
-
-Rooted runs entirely inside an ASI:One chat, using the Agent Chat Protocol, ASI:One Interactive Cards and the Agent Payment Protocol. There is no custom frontend.
+Rooted runs entirely inside an ASI:One chat, using the Agent Chat Protocol, ASI:One Interactive Cards and the Agent Payment Protocol.
 
 ## The problem
 
