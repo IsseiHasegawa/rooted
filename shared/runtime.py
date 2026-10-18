@@ -19,7 +19,7 @@ from uagents_core.identity import Identity
 ROOT = Path(__file__).resolve().parent.parent
 load_dotenv(ROOT / ".env")
 
-# key -> Agentverse name, seed variable, local port, module
+# key -> Agentverse name, seed variable, local port, module; readme and description go to the Agentverse profile
 AGENTS: dict[str, dict] = {
     "orchestrator": {"name": "rooted-orchestrator", "seed_env": "ORCHESTRATOR_SEED", "port": 8000, "module": "agents.orchestrator.agent"},
     "risk": {"name": "rooted-risk", "seed_env": "RISK_SEED", "port": 8001, "module": "agents.risk.agent"},
@@ -64,6 +64,21 @@ class LocalFirstResolver(Resolver):
         return await self._global.resolve(destination)
 
 
+DESCRIPTIONS = {
+    "orchestrator": "Chat with this agent in ASI:One to make an older parent's bathroom safer: fall-risk check, fixes, quotes, funding and a Stripe deposit.",
+    "risk": "Scores the CDC STEADI fall-risk screening and lists home hazards for rooted-orchestrator.",
+    "visualizer": "Draws the safer bathroom with numbered fix markers and the cost waterfall for rooted-orchestrator.",
+    "funding": "Matches grants and insurance benefits with deterministic rules and sources for rooted-orchestrator.",
+    "juniper": "Juniper Home Repair: a fictional, lowest-price contractor that quotes home-safety fixes for rooted-orchestrator.",
+    "mesa": "Mesa Handyworks: a fictional, fastest-start contractor that quotes home-safety fixes for rooted-orchestrator.",
+    "arbor": "Arbor CAPS Remodeling: a fictional, CAPS-certified contractor that quotes home-safety fixes for rooted-orchestrator.",
+}
+
+
+def readme_path(key: str) -> Path:
+    return ROOT / "agents" / ("contractor" if key in CONTRACTOR_KEYS else key) / "README.md"
+
+
 def make_agent(key: str) -> Agent:
     spec = AGENTS[key]
     return Agent(
@@ -72,6 +87,9 @@ def make_agent(key: str) -> Agent:
         port=int(os.getenv("AGENT_PORT", spec["port"])),
         mailbox=True,
         publish_agent_details=True,
+        # Sent to Agentverse on /connect (scripts/connect_mailboxes.py).
+        readme_path=str(readme_path(key)),
+        description=DESCRIPTIONS[key],
         resolve=LocalFirstResolver(),
     )
 

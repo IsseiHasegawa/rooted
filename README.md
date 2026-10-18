@@ -38,17 +38,17 @@ Funding eligibility is plain Python over `data/programs.json`. No LLM decides wh
 
 ## Agents
 
-| Agent | Role | Address (links to the Agentverse profile) |
-| --- | --- | --- |
-| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | [`agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t`](https://agentverse.ai/agents/details/agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t/profile) |
-| rooted-risk | STEADI scoring and room-by-room hazards | [`agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj`](https://agentverse.ai/agents/details/agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj/profile) |
-| rooted-visualizer | After images, hazard markers, cost waterfall chart | [`agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6`](https://agentverse.ai/agents/details/agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6/profile) |
-| rooted-funding | Grant and insurance benefit eligibility | [`agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm`](https://agentverse.ai/agents/details/agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm/profile) |
-| contractor-juniper | Quotes and negotiation (fictional, budget) | [`agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9`](https://agentverse.ai/agents/details/agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9/profile) |
-| contractor-mesa | Quotes and negotiation (fictional, fastest) | [`agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv`](https://agentverse.ai/agents/details/agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv/profile) |
-| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | [`agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j`](https://agentverse.ai/agents/details/agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j/profile) |
+| Agent | Role | Address | Agentverse profile |
+| --- | --- | --- | --- |
+| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t` | [profile](https://agentverse.ai/agents/details/agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t/profile) |
+| rooted-risk | STEADI scoring and room-by-room hazards | `agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj` | [profile](https://agentverse.ai/agents/details/agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj/profile) |
+| rooted-visualizer | After images, hazard markers, cost waterfall chart | `agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6` | [profile](https://agentverse.ai/agents/details/agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6/profile) |
+| rooted-funding | Grant and insurance benefit eligibility | `agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm` | [profile](https://agentverse.ai/agents/details/agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm/profile) |
+| contractor-juniper | Quotes and negotiation (fictional, budget) | `agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9` | [profile](https://agentverse.ai/agents/details/agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9/profile) |
+| contractor-mesa | Quotes and negotiation (fictional, fastest) | `agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv` | [profile](https://agentverse.ai/agents/details/agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv/profile) |
+| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | `agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j` | [profile](https://agentverse.ai/agents/details/agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j/profile) |
 
-Addresses are derived from each agent's seed. All seven are registered on Agentverse with a mailbox; only the orchestrator talks to ASI:One users, and the others talk to it over localhost.
+Addresses are derived from each agent's seed. All seven are registered on Agentverse with a mailbox, and each profile shows the agent's README (`agents/<agent>/README.md`; the three contractors share one) and a short description. Only the orchestrator talks to ASI:One users; the others talk to it over localhost.
 
 ## How to try it
 
@@ -93,8 +93,9 @@ cp .env.example .env          # then fill in the keys listed in the file
 
 - `DEMO_MODE=1`: the intake and split forms become optional and every blank field takes the demo profile (Maria, 82, East Los Angeles 90022, owner for 240 months, one person, $38,000, Sample plan A; two payers split evenly with Leo). Every agent still exchanges real messages; only typing is skipped. `SIM_DEMO=1 tests/sim_client.py pay` checks it.
 - Contractor failover: `CONTRACTOR_OFFLINE=mesa .venv/bin/python scripts/run_all.py` makes Mesa stop answering. After 15 s the orchestrator says so and compares the other two quotes. Killing the contractor-mesa process mid-run has the same effect.
-- Between runs: stop `run_all.py` (Ctrl+C), run `.venv/bin/python scripts/demo_reset.py`, start `run_all.py` again. It forgets every chat session and expires open Rooted checkouts in Stripe test mode (`--dry-run` shows what it would do). It refuses to run while the agents are up, because they would write their in-memory sessions back.
-- Demo run: `DEMO_MODE=1 CONTRACTOR_OFFLINE=mesa .venv/bin/python scripts/run_all.py`, then in ASI:One: "Start over", Continue on the blank intake, tick "fallen" and two or three more STEADI items, Find the fixes, bathroom b1, Full bathroom remodel too, Get 3 quotes, Arbor, Fix it now, Approve, Maria agrees, Send payment requests, pay with `4242 4242 4242 4242`. Send `/complete` to collect the balance.
+- Before each demo run: `scripts/demo_restart.sh`. In one command it stops the agents, runs `scripts/demo_reset.py` (forgets every chat session and expires open Rooted checkouts in Stripe test mode), starts all 7 agents in the background with `DEMO_MODE=1 CONTRACTOR_OFFLINE=mesa` (log in `out/run_all.log`), waits until they listen, and reconnects the mailboxes, which also republishes each README to Agentverse. It takes about 20 s. Stop the agents with `pkill -f scripts/run_all.py`.
+- `scripts/demo_reset.py` alone refuses to run while the agents are up, because they would write their in-memory sessions back; `--dry-run` shows what it would do.
+- Demo run: `scripts/demo_restart.sh`, then in ASI:One (asi1.ai, New Chat, To: `rooted-orchestrator`): "Start over", Continue on the blank intake, tick "fallen" and two or three more STEADI items, Find the fixes, bathroom b1, Full bathroom remodel too, Get 3 quotes, Arbor, Fix it now, Approve, Maria agrees, Send payment requests, pay with `4242 4242 4242 4242`. Send `/complete` to collect the balance.
 
 ## Data sources
 

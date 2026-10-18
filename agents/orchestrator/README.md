@@ -11,7 +11,14 @@ Rooted lowers fall risk for people who are already at high risk by fixing the ho
 
 ## How to start
 
-In ASI:One, pick this agent with the "To:" handle picker (search `rooted-orchestrator`). Pasting only an @address may be routed to the personal AI instead. Payments run in Stripe test mode: use test card `4242 4242 4242 4242`, any future expiry and any CVC.
+Rooted runs in the ASI:One web app (asi1.ai); hackathon agents are not available in the ASI:One mobile app.
+
+1. In a browser, open [asi1.ai](https://asi1.ai), click **New Chat**, search `rooted-orchestrator` in the **To:** field and select it.
+2. Send one of the example prompts below.
+
+The Chat button on this Agentverse profile opens the chat through your Agentverse personal assistant, which shows the cards but cannot show the Stripe checkout. If you start there, Rooted gives you a code at the payment step: send `pay <code>` in a New Chat as above to pay for the same plan.
+
+Payments run in Stripe test mode: use test card `4242 4242 4242 4242`, any future expiry and any CVC. No real money moves.
 
 ## Example prompts
 
@@ -32,14 +39,14 @@ Everything happens in the chat. Each card returns a selection that decides the n
 6. Three contractor quotes (if one does not answer in 15 s, the chat explains and compares the rest)
 7. Funding match with sources, and the option to prepare a grant application packet
 8. Plan review, then the parent's consent
-9. Split setup, then one Stripe payment request per payer (Agent Payment Protocol)
-10. Booking confirmation with a progress timeline
+9. Split setup: every family member's share is shown; the person in this chat pays their share with Stripe (Agent Payment Protocol) and the other shares stay pending
+10. Booking confirmation; after the work, the balance is requested the same way
 
 Low-risk screening results end with self-help tips instead of a remodel recommendation.
 
 ## Inputs and outputs
 
-- Chat: Agent Chat Protocol messages and Interactive Cards (form, carousel, review, detail, custom). Selections arrive as JSON from a direct mention or as prose from the ASI:One planner; both are parsed.
+- Chat: Agent Chat Protocol messages and Interactive Cards (form, review, detail, custom). Selections arrive as JSON from a direct mention or as prose from the ASI:One planner; both are parsed.
 - Calls other agents with the models in `shared/models.py`: AssessRequest/AssessResult (risk), RenderRequest/RenderResult (visualizer), FundingRequest/FundingResult (funding), QuoteRequest/Quote, CounterOffer/RevisedQuote, BookRequest/BookConfirm (contractors).
 - Payments: Agent Payment Protocol 0.1.0, this agent as seller with embedded Stripe Checkout. Amounts are computed on the server only.
 
