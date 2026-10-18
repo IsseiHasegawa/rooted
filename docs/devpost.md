@@ -9,7 +9,7 @@ Most older adults want to stay in their own homes, and the bathroom is where man
 ## What it does
 - Screens the parent with the CDC STEADI 12-question check.
 - Shows the bathroom after the fixes, with numbered hazard markers.
-- Collects three contractor quotes and runs one negotiation round. If a contractor does not answer within 20 seconds, the flow continues with the others.
+- Collects three contractor quotes and runs one negotiation round. If a contractor does not answer within 15 seconds, the flow continues with the others.
 - Matches the family to LACDA, NHS LA County, PICF HUD and Medicare Advantage home-safety benefits with deterministic rules. Each result shows its source page.
 - Produces an OT-ready plan, asks the parent for consent, splits the 30% deposit across family members with Stripe, and books the work. The final 70% is paid after completion.
 

@@ -32,7 +32,7 @@ Negotiation rules:
 - Quotes are valid for 7 days.
 - Setting `CONTRACTOR_OFFLINE=mesa` (comma-separated ids) makes that contractor ignore every message, to demo failover.
 
-The orchestrator asks all three at once with a 20 s timeout and continues with whoever answers. After the quotes arrive, it asks the CAPS-certified contractor (Arbor) once to match the lowest other quote, and the carousel then shows a "Negotiated" badge.
+The orchestrator asks all three at once with a 15 s timeout and continues with whoever answers. After the quotes arrive, it asks the CAPS-certified contractor (Arbor) once to match the lowest other quote, and the carousel then shows a "Negotiated" badge.
 
 ## Limitations
 

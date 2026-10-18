@@ -34,7 +34,7 @@ flowchart TD
     F -.-> P[(data/programs.json)]
 ```
 
-Funding eligibility is plain Python over `data/programs.json`. No LLM decides who qualifies. Contractor requests go out in parallel with a 20 s timeout, and the flow continues with whoever answers.
+Funding eligibility is plain Python over `data/programs.json`. No LLM decides who qualifies. Contractor requests go out in parallel with a 15 s timeout, and the flow continues with whoever answers.
 
 ## Agents
 
