@@ -218,6 +218,15 @@ async def flow(ctx: Context) -> int:
             for item in payload["items"]:
                 badges = ", ".join(b["label"] for b in item["badges"])
                 print(f"        quote: {item['title']}: {item['secondary_text']} [{badges}]")
+        if label == "CONSENT":
+            # A dismissed consent card (approved=false) must come back, not advance to SPLIT.
+            await ctx.send(orch, text_message(json.dumps({"selection": sel, "approved": False})))
+            _, (kind2, payload2) = await next_card()
+            if not any(s["action"] == "consent" for s in find_selections(payload2)):
+                print(f"FAIL  {'CONSENT':14s} approved=false advanced to a {kind2} card")
+                return 1
+            print(f"PASS  {'CONSENT':14s}        approved=false -> consent card re-sent")
+            sel = {"selection": sel, "approved": True}
         await ctx.send(orch, text_message(json.dumps(sel)))
     texts, (kind, payload) = await next_card()
     print(f"PASS  {'PAY':14s}        {kind:8s} {payload['root'].get('title')}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")
