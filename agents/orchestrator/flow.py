@@ -37,7 +37,7 @@ TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 20, "char
 
 PRICES = {p["id"]: p for p in json.loads((ROOT / "data" / "prices.json").read_text())["items"]}
 BATHROOMS = [
-    {"id": f"b{i}", "label": label, "image": f"bathrooms/b{i}.png"}
+    {"id": f"b{i}", "label": label, "image": f"assets/bathrooms/b{i}.png"}
     for i, label in enumerate(["Tub with shower", "Step-in shower", "Small bathroom", "Rug and clutter", "Dim bathroom"], 1)
 ]
 CONTRACTORS = {c["id"]: c for c in json.loads((ROOT / "data" / "contractors.json").read_text())["contractors"]}
@@ -235,7 +235,7 @@ async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:
     await say(ctx, s, "Drawing the safer version of this bathroom...")
     render = await call(ctx, s, "visualizer", RenderRequest(session_id=sid, bathroom_id=bathroom_id, fix_item_ids=fix_ids),
                         RenderResult, TIMEOUTS["visualizer"])
-    marked = render.marked_url if render and not render.error else f"bathrooms/{bathroom_id}.png"
+    marked = render.marked_url if render and not render.error else f"assets/bathrooms/{bathroom_id}.png"
     urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
     full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
     await show(ctx, s, "The numbers on the picture match the list of fixes.",
