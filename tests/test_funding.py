@@ -85,3 +85,27 @@ def test_altadena_eligible_and_incorporated_pasadena_not():
 def test_household_of_five_uses_published_limit():
     assert "lacda_senior_grant" in ids(allocate(req(household_size=5, annual_income=140_000)))
     assert "lacda_senior_grant" not in ids(allocate(req(household_size=5, annual_income=150_000)))
+
+
+def test_pay_now_maria_urgent_with_ma_plan():
+    # Shape of the urgent quote: $270 of items the plan covers plus $384 it does not.
+    items = [
+        LineItem(id="grab_bar_tub", label="Grab bar", category="grab_bar", unit_price_cents=27_000),
+        LineItem(id="night_light", label="Night light", category="lighting", unit_price_cents=38_400),
+    ]
+    res = allocate(req(insurance_plan="sample_ma_plan_a", line_items=items))
+    assert res.total_cents == 65_400
+    assert ids(res)["sample_ma_plan_a"].amount_cents == 27_000
+    assert res.pay_now_cents == 38_400
+    assert res.family_share_cents < res.pay_now_cents  # NHS covers lighting, but only after an application
+
+
+def test_pay_now_pasadena_renter_equals_total_without_ma():
+    res = allocate(req(community="Pasadena", tenure="renter", months_owned=0))
+    assert res.pay_now_cents == res.total_cents  # PICF is funded later, so nothing reduces pay-now
+
+
+def test_pay_now_maria_grants_only_is_full_total():
+    res = allocate(req())
+    assert res.family_share_cents == 0
+    assert res.pay_now_cents == res.total_cents

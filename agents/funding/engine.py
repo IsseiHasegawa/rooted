@@ -100,12 +100,15 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
 
     covered = sum(m.amount_cents for m in matches)
     all_ids = [i.id for i in req.line_items]
+    # Grants pay only after an application, so only non-funded_later programs reduce what is due now.
+    pay_now = total - sum(m.amount_cents for m in matches if not m.funded_later)
     return FundingResult(
         session_id=req.session_id,
         matches=matches,
         total_cents=total,
         covered_cents=covered,
         family_share_cents=total - covered,
+        pay_now_cents=pay_now,
         pay_now_item_ids=[i for i in all_ids if i not in grant_item_ids],
         funded_later_item_ids=[i for i in all_ids if i in grant_item_ids],
     )

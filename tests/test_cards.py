@@ -126,7 +126,15 @@ def test_image_src_switchable():
     assert image_src("https://x.example/a.png") == "https://x.example/a.png"
     assert image_src("http://127.0.0.1:8080/c.png") == "http://127.0.0.1:8080/c.png"
     assert image_src("data:image/png;base64,AAAA") == "data:image/png;base64,AAAA"
-    assert image_src("bathrooms/b1").endswith("/bathrooms/b1.png")
+    assert image_src("assets/bathrooms/b1.png") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
+    assert image_src("assets/bathrooms/b1") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
+
+
+def test_bathroom_picker_uses_repo_relative_assets():
+    from shared.cards import bathroom_pick_card
+    payload = bathroom_pick_card(SID, [{"id": "b1", "label": "Tub"}])[1]
+    choice = payload["root"]["children"][0]["choices"][0]
+    assert choice["image"] == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
 
 
 def test_card_message_and_terminal_flag():
@@ -174,3 +182,52 @@ def test_wrapped_not_approved_is_no_selection(approved):
 def test_wrapper_without_approved_flag_still_parses():
     sel = {"action": "pick_bathroom", "session_id": SID, "bathroom_id": "b2"}
     assert parse_selection(json.dumps({"selection": sel})) == sel
+
+
+FUNDING = {
+    "total_cents": 74_550, "covered_cents": 56_000, "pay_now_cents": 58_550, "family_share_cents": 18_550,
+    "matches": [
+        {"program_id": "sample_ma_plan_a", "name": "Sample plan A", "amount_cents": 16_000, "source_url": "https://x", "as_of": "2026-10-17", "funded_later": False},
+        {"program_id": "nhs", "name": "NHS LA County", "amount_cents": 40_000, "source_url": "https://y", "as_of": "2026-10-17", "funded_later": True},
+    ],
+}
+
+
+def test_funding_summary_due_now_and_deposit():
+    from shared.cards import funding_summary
+    m = funding_summary(FUNDING)
+    assert m["due_now_cents"] == 58_550 and m["deposit_cents"] == 17_565 and m["balance_cents"] == 40_985
+    assert m["grant_cents"] == 40_000 and m["grant_names"] == ["NHS LA County"]
+    assert m["family_after_all_cents"] == 18_550
+    # Without pay_now_cents, due now is total minus benefits paid now; grants never reduce it.
+    legacy = {k: v for k, v in FUNDING.items() if k != "pay_now_cents"}
+    assert funding_summary(legacy)["due_now_cents"] == 58_550
+
+
+def test_money_wording_on_funding_review_split():
+    from shared.cards import funding_card, plan_review_card, split_card
+    texts = {
+        "funding": json.dumps(funding_card(SID, "q_mesa_1", FUNDING)[1]),
+        "review": json.dumps(plan_review_card(SID, "q_mesa_1", ["Grab bar"], "Mesa", "2026-10-19", FUNDING)[1]),
+    }
+    for name, text in texts.items():
+        assert "$585.50" in text and "$175.65" in text, name
+        assert "Grants may reimburse up to $400 after approval (NHS LA County)" in text, name
+        assert "$185.50" in text and "not guaranteed" in text, name
+        assert "guaranteed approval" not in text.lower()
+    split = split_card(SID, "q_mesa_1", FUNDING)[1]
+    assert split["title"] == "Split the $175.65 deposit (30% of $585.50 due now)"
+
+
+def test_no_grant_line_without_grants():
+    from shared.cards import funding_card
+    only_insurance = {**FUNDING, "matches": FUNDING["matches"][:1], "family_share_cents": 58_550}
+    assert "Grants may reimburse" not in json.dumps(funding_card(SID, "q_mesa_1", only_insurance)[1])
+
+
+def test_funding_result_model_accepted():
+    from shared.cards import funding_card, funding_summary
+    from shared.models import FundingResult
+    model = FundingResult(session_id=SID, **FUNDING)
+    assert funding_summary(model)["due_now_cents"] == 58_550
+    assert funding_card(SID, "q_mesa_1", model)[0] == "custom"

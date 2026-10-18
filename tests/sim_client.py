@@ -134,6 +134,9 @@ async def smoke(ctx: Context) -> int:
 
 # ---- flow ------------------------------------------------------------------
 
+SIM_SCOPE = os.getenv("SIM_SCOPE", "urgent")  # urgent | full
+SIM_PICK = os.getenv("SIM_PICK", "")  # juniper | mesa | arbor; default: first quote in the carousel
+
 MARIA = {
     "parent_name": "Maria", "age": "82", "community": "East Los Angeles", "zip_code": "90022", "tenure": "owner",
     "months_owned": "240", "household_size": "1", "annual_income": "38000", "insurance_plan": "sample_ma_plan_a",
@@ -175,6 +178,25 @@ def find_selections(node) -> list[dict]:
     return found
 
 
+def funding_numbers(payload: dict) -> dict:
+    """The waterfall inputs as shown on the funding card: badges, then each program in card order."""
+    def walk(node):
+        if isinstance(node, dict):
+            yield node
+            for v in node.values():
+                yield from walk(v)
+        elif isinstance(node, list):
+            for v in node:
+                yield from walk(v)
+    badges = [n["label"] for n in walk(payload) if n.get("type") == "badge"]
+    programs = []
+    for n in walk(payload):
+        kids = n.get("children") if isinstance(n.get("children"), list) else []
+        if kids and kids[0].get("style") == "emphasis" and len(kids) > 1 and kids[1].get("type") == "badge":
+            programs.append({"name": kids[0]["value"], "amount": kids[1]["label"]})
+    return {"badges": badges[:3], "programs": programs}
+
+
 def pick(payload: dict, action: str) -> dict:
     return next(s for s in find_selections(payload) if s["action"] == action)
 
@@ -188,8 +210,9 @@ async def flow(ctx: Context) -> int:
         ("STEADI_2", "submit_steadi", lambda p: {**pick(p, "submit_steadi"), **{f["name"]: f["name"] in STEADI_YES for f in p["fields"]}}),
         ("RISK_RESULT", "continue", lambda p: pick(p, "continue")),
         ("PICK_BATHROOM", "pick_bathroom", lambda p: {**pick(p, "pick_bathroom"), "bathroom_id": "b1"}),
-        ("RENDER", "get_quotes", lambda p: {**pick(p, "get_quotes"), "scope": "urgent"}),
-        ("QUOTES", "pick_quote", lambda p: pick(p, "pick_quote")),
+        ("RENDER", "get_quotes", lambda p: {**pick(p, "get_quotes"), "scope": SIM_SCOPE}),
+        ("QUOTES", "pick_quote", lambda p: next(s for s in find_selections(p) if s["action"] == "pick_quote"
+                                                and s.get("contractor_id") == SIM_PICK) if SIM_PICK else pick(p, "pick_quote")),
         ("FUNDING", "accept_funding", lambda p: pick(p, "accept_funding")),
         ("REVIEW", "approve", lambda p: pick(p, "approve")),
         ("CONSENT", "consent", lambda p: pick(p, "consent")),
@@ -212,6 +235,8 @@ async def flow(ctx: Context) -> int:
             return 1
         sel = answer(payload)
         print(f"PASS  {label:14s} {time.monotonic() - t0:5.1f}s  {kind:8s} -> {action}  {' | '.join(texts)[:90]}")
+        if label == "FUNDING":
+            print(f"        funding: {json.dumps(funding_numbers(payload))}")
         if kind == "carousel":
             for line in texts:
                 print(f"        chat: {line}")

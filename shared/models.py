@@ -105,7 +105,10 @@ class FundingResult(Model):
     matches: list[ProgramMatch] = []
     total_cents: int = 0
     covered_cents: int = 0
-    family_share_cents: int = 0
+    family_share_cents: int = 0  # after every program, including grants paid later
+    # Total minus coverage from programs with funded_later=False; the deposit is based on this.
+    # None means not computed: cards.funding_summary then derives it from matches.
+    pay_now_cents: int | None = None
     pay_now_item_ids: list[str] = []
     funded_later_item_ids: list[str] = []
     chart_url: str = ""

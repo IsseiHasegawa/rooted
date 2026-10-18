@@ -22,8 +22,9 @@ STEADI_PATH = ROOT / "data" / "steadi.json"
 STEADI_LABEL = "Based on CDC STEADI"
 
 # Card Playground check #5: public https images render, so every card image is a public URL. Relative refs
-# (e.g. "bathrooms/b1.png") resolve against ROOTED_IMAGE_BASE_URL, the visualizer's asset host.
-IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/rooted-lahacks/rooted/main/assets")
+# are repo-relative (e.g. "assets/bathrooms/b1.png") and resolve against ROOTED_IMAGE_BASE_URL, the repo root
+# on GitHub raw. The visualizer builds its URLs the same way.
+IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/")
 _ABSOLUTE_IMAGE = ("https://", "http://", "data:")
 
 ACTIONS = (
@@ -153,8 +154,7 @@ def steadi_card(session_id: str, part: int, steadi: dict | None = None) -> tuple
     steadi = steadi or load_steadi()
     questions = steadi["questions"][(part - 1) * 6: part * 6]
     return "form", {
-        "title": f"Fall-risk check ({part} of 2)",
-        "subtitle": f"Tick each statement that is true for your parent. {STEADI_LABEL} Stay Independent.",
+        "title": f"Fall-risk check ({part} of 2): tick what is true for your parent",
         "fields": [{"name": q["id"], "kind": "checkbox", "label": q["text"]} for q in questions],
         "submit_cta": {"label": "Next" if part == 1 else "See the result",
                        "selection": _sel("submit_steadi", session_id, part=str(part))},
@@ -207,7 +207,7 @@ def bathroom_pick_card(session_id: str, bathrooms: list[dict], parent_name: str 
     return "custom", {"root": {"type": "section", "title": f"Which bathroom looks most like {parent_name}'s?",
                                "subtitle": "Pick the closest one. It does not need to match exactly.", "children": [
         {"type": "choice_grid", "name": "bathroom_id", "choices": [
-            {"value": b["id"], "label": b["label"], "image": image_src(b.get("image") or b["id"])} for b in bathrooms
+            {"value": b["id"], "label": b["label"], "image": image_src(b.get("image") or f"assets/bathrooms/{b['id']}.png")} for b in bathrooms
         ]},
         {"type": "button", "label": "Use this bathroom", "primary": True,
          "action": {"selection": _sel("pick_bathroom", session_id)}},
@@ -272,26 +272,66 @@ def quotes_carousel_card(session_id: str, quotes: list, image_by_contractor: dic
 
 # ---- 7. funding (custom) ---------------------------------------------------
 
-def funding_card(session_id: str, quote_id: str, funding: Any) -> tuple[str, dict]:
+def funding_summary(funding: Any, deposit_percent: int = 30) -> dict:
+    """Money figures shared by the funding, review and split cards (and the orchestrator's deposit).
+
+    due_now: what the family pays today, i.e. total minus benefits paid now (insurance). Grants
+    (funded_later) may reimburse later, after an application, so they never reduce what is due now.
+    """
     f = _as_dict(funding)
     matches = [_as_dict(m) for m in f.get("matches", [])]
+    total = f.get("total_cents", 0)
+    benefits_now = sum(m["amount_cents"] for m in matches if not m.get("funded_later"))
+    grants = [m for m in matches if m.get("funded_later")]
+    grant_cents = sum(m["amount_cents"] for m in grants)
+    due_now = f.get("pay_now_cents")
+    if due_now is None:
+        due_now = max(0, total - benefits_now)
+    family_after_all = f.get("family_share_cents")
+    if family_after_all is None:
+        family_after_all = max(0, due_now - grant_cents)
+    deposit = due_now * deposit_percent // 100
+    return {
+        "total_cents": total, "benefits_now_cents": benefits_now, "due_now_cents": due_now,
+        "grant_cents": grant_cents, "grant_names": [m["name"] for m in grants],
+        "family_after_all_cents": family_after_all, "deposit_percent": deposit_percent,
+        "deposit_cents": deposit, "balance_cents": due_now - deposit,
+    }
+
+
+def grants_line(summary: dict) -> str:
+    names = " and ".join(summary["grant_names"])
+    return (f"Grants may reimburse up to {usd(summary['grant_cents'])} after approval ({names}). "
+            "Approval is not guaranteed.")
+
+
+def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
+    f = _as_dict(funding)
+    matches = [_as_dict(m) for m in f.get("matches", [])]
+    m_sum = funding_summary(f, deposit_percent)
     children: list[dict] = []
     if f.get("chart_url"):
         children.append({"type": "image", "src": image_src(f["chart_url"]), "alt": "Cost waterfall", "aspect_ratio": "16:9"})
     children += [
         {"type": "group", "direction": "row", "gap": 8, "children": [
-            {"type": "badge", "label": f"Total {usd(f.get('total_cents', 0))}", "variant": "info"},
-            {"type": "badge", "label": f"Covered {usd(f.get('covered_cents', 0))}", "variant": "success"},
-            {"type": "badge", "label": f"Family share {usd(f.get('family_share_cents', 0))}", "variant": "warning"},
+            {"type": "badge", "label": f"Total {usd(m_sum['total_cents'])}", "variant": "info"},
+            {"type": "badge", "label": f"Due now: {usd(m_sum['due_now_cents'])}", "variant": "warning"},
         ]},
+        {"type": "text", "value": f"Deposit today ({deposit_percent}% of due now): {usd(m_sum['deposit_cents'])}", "style": "emphasis"},
+    ]
+    if m_sum["grant_cents"]:
+        children.append({"type": "text", "value": grants_line(m_sum)})
+    children += [
+        {"type": "text", "value": f"Family share after all programs: {usd(m_sum['family_after_all_cents'])}"
+                                  + (" if the grants are approved" if m_sum["grant_cents"] else "")},
         {"type": "heading", "value": "Programs that match" if matches else "No program matched", "level": 3},
     ]
     if matches:
         children.append({"type": "list", "items": [
             {"children": [
                 {"type": "text", "value": m["name"], "style": "emphasis"},
-                {"type": "badge", "label": usd(m["amount_cents"]), "variant": "success"},
-                {"type": "badge", "label": "After application" if m.get("funded_later") else "Pay now", "variant": "warning" if m.get("funded_later") else "info"},
+                {"type": "badge", "label": f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") else usd(m["amount_cents"]), "variant": "success"},
+                {"type": "badge", "label": "After approval" if m.get("funded_later") else "Applied now", "variant": "warning" if m.get("funded_later") else "info"},
                 {"type": "text", "value": m.get("next_step") or "", "style": "body"},
                 {"type": "text", "value": f"Source: {m['source_url']} (as of {m['as_of']})", "style": "muted"},
             ]} for m in matches
@@ -310,21 +350,28 @@ def funding_card(session_id: str, quote_id: str, funding: Any) -> tuple[str, dic
 # ---- 8. plan review (review) -----------------------------------------------
 
 def plan_review_card(session_id: str, quote_id: str, items: list[str], contractor_name: str, date: str,
-                     total_cents: int, covered_cents: int, family_share_cents: int, deposit_percent: int = 30) -> tuple[str, dict]:
-    deposit = family_share_cents * deposit_percent // 100
+                     funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
+    m = funding_summary(funding, deposit_percent)
     ids = {"quote_id": quote_id}
+    rows = [
+        {"label": "Fixes", "value": ", ".join(items)},
+        {"label": "Contractor", "value": contractor_name},
+        {"label": "Install date", "value": date},
+        {"label": "Total", "value": usd(m["total_cents"])},
+    ]
+    if m["benefits_now_cents"]:
+        rows.append({"label": "Insurance benefit", "value": f"-{usd(m['benefits_now_cents'])}"})
+    rows += [
+        {"label": "Due now", "value": usd(m["due_now_cents"])},
+        {"label": f"Deposit today ({deposit_percent}%)", "value": usd(m["deposit_cents"])},
+        {"label": "Balance", "value": f"{usd(m['balance_cents'])} after the work passes a completion check"},
+    ]
+    if m["grant_cents"]:
+        rows.append({"label": "Grants (after approval)", "value": grants_line(m)})
+    rows.append({"label": "Family share after all programs", "value": usd(m["family_after_all_cents"])})
     return "review", {
         "title": "Review the plan",
-        "summary_rows": [
-            {"label": "Fixes", "value": ", ".join(items)},
-            {"label": "Contractor", "value": contractor_name},
-            {"label": "Install date", "value": date},
-            {"label": "Total", "value": usd(total_cents)},
-            {"label": "Covered by programs", "value": usd(covered_cents)},
-            {"label": "Family share", "value": usd(family_share_cents)},
-            {"label": f"Deposit today ({deposit_percent}%)", "value": usd(deposit)},
-            {"label": "Balance", "value": f"{usd(family_share_cents - deposit)} after the work passes a completion check"},
-        ],
+        "summary_rows": rows,
         "approve_cta": {"label": "Approve plan", "primary": True, "selection": _sel("approve", session_id, **ids)},
         "reject_cta": {"label": "Cancel", "selection": _sel("cancel", session_id, **ids)},
     }
@@ -348,9 +395,11 @@ def consent_card(session_id: str, quote_id: str, parent_name: str, items: list[s
 
 # ---- 10. family split (form) -----------------------------------------------
 
-def split_card(session_id: str, quote_id: str, deposit_cents: int) -> tuple[str, dict]:
+def split_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
+    # The form schema has no subtitle, so the money context goes in the title.
+    m = funding_summary(funding, deposit_percent)
     return "form", {
-        "title": f"Split the {usd(deposit_cents)} deposit",
+        "title": f"Split the {usd(m['deposit_cents'])} deposit ({deposit_percent}% of {usd(m['due_now_cents'])} due now)",
         "fields": [
             {"name": "payers", "kind": "number", "label": "How many family members will pay?", "required": True},
             {"name": "split", "kind": "select", "label": "How to split", "required": True,
@@ -560,7 +609,8 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
          "items": fixes, "earliest_date": "2026-10-21", "badges": ["CAPS certified"], "expires_at": "2026-10-24"},
     ]
     funding = {
-        "total_cents": 74_550, "covered_cents": 56_000, "family_share_cents": 18_550, "chart_url": "charts/waterfall_demo.png",
+        "total_cents": 74_550, "covered_cents": 56_000, "pay_now_cents": 58_550, "family_share_cents": 18_550,
+        "chart_url": "assets/charts/waterfall_demo.png",
         "matches": [
             {"program_id": "sample_ma_plan_a", "name": "Sample plan A: home safety benefit (B14c)", "amount_cents": 16_000,
              "source_url": "https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf",
@@ -578,19 +628,19 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
         "03_risk_result": risk_result_card(session_id, 6, True, hazards, steadi_src, fell_past_year=True),
         "03b_low_risk": low_risk_card(session_id, 2, steadi_src),
         "04_pick_bathroom": bathroom_pick_card(session_id, [
-            {"id": f"b{i}", "label": label, "image": f"bathrooms/b{i}.png"} for i, label in enumerate(
+            {"id": f"b{i}", "label": label, "image": f"assets/bathrooms/b{i}.png"} for i, label in enumerate(
                 ["Tub with shower", "Step-in shower", "Small bathroom", "Rug and clutter", "Dim bathroom"], 1)
         ], "Maria"),
-        "05_after_detail": after_detail_card(session_id, "b1", "bathrooms/b1_after_marked.png", fixes, 74_550, 650_000),
+        "05_after_detail": after_detail_card(session_id, "b1", "assets/bathrooms/b1_after_marked.png", fixes, 74_550, 650_000),
         "06_quotes": quotes_carousel_card(session_id, quotes),
         "07_funding": funding_card(session_id, "q_mesa_1", funding),
-        "08_plan_review": plan_review_card(session_id, "q_mesa_1", labels, "Mesa Handyworks", "2026-10-19", 74_550, 56_000, 18_550),
+        "08_plan_review": plan_review_card(session_id, "q_mesa_1", labels, "Mesa Handyworks", "2026-10-19", funding),
         "09_consent": consent_card(session_id, "q_mesa_1", "Maria", labels, "2026-10-19"),
-        "10_split": split_card(session_id, "q_mesa_1", 5_565),
+        "10_split": split_card(session_id, "q_mesa_1", funding),
         "11_payment_status": payment_status_card(session_id, [
-            {"name": "Sofia", "amount_cents": 2_783, "paid": True}, {"name": "Leo", "amount_cents": 2_782, "paid": False}]),
-        "12_booking": booking_card(session_id, "bk_mesa_7f3a", "Mesa Handyworks", "2026-10-19", 5_565, 12_985),
-        "13_completion": completion_card(session_id, "bk_mesa_7f3a", "bathrooms/b1_after.png", 12_985),
+            {"name": "Sofia", "amount_cents": 8_783, "paid": True}, {"name": "Leo", "amount_cents": 8_782, "paid": False}]),
+        "12_booking": booking_card(session_id, "bk_mesa_7f3a", "Mesa Handyworks", "2026-10-19", 17_565, 40_985),
+        "13_completion": completion_card(session_id, "bk_mesa_7f3a", "assets/bathrooms/b1_after.png", 40_985),
     }
 
 

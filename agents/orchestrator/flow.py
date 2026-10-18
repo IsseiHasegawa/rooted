@@ -333,17 +333,16 @@ def _plan(s: dict) -> dict:
     return {
         "quote": quote,
         "items": [i["label"] for i in quote["items"]],
-        "family_share": f["family_share_cents"],
-        "deposit": f["family_share_cents"] * DEPOSIT_PERCENT // 100,
+        "deposit": cards.funding_summary(f, DEPOSIT_PERCENT)["deposit_cents"],
     }
 
 
 async def on_accept_funding(ctx: Context, s: dict, sel: dict) -> None:
     s["data"]["prepare_packet"] = sel.get("prepare_packet") == "yes"
-    p, f = _plan(s), s["data"]["funding"]
+    p = _plan(s)
     await show(ctx, s, "Please review the plan.", cards.plan_review_card(
         s["session_id"], p["quote"]["quote_id"], p["items"], p["quote"]["contractor_name"], p["quote"]["earliest_date"],
-        f["total_cents"], f["covered_cents"], f["family_share_cents"], DEPOSIT_PERCENT))
+        s["data"]["funding"], DEPOSIT_PERCENT))
     transition(ctx, s, "REVIEW")
 
 
@@ -365,7 +364,7 @@ async def on_consent(ctx: Context, s: dict, sel: dict) -> None:
         transition(ctx, s, "DECLINED")
         return
     p = _plan(s)
-    await show(ctx, s, "Last step: who pays the deposit?", cards.split_card(s["session_id"], p["quote"]["quote_id"], p["deposit"]))
+    await show(ctx, s, "Last step: who pays the deposit?", cards.split_card(s["session_id"], p["quote"]["quote_id"], s["data"]["funding"], DEPOSIT_PERCENT))
     transition(ctx, s, "SPLIT")
 
 
