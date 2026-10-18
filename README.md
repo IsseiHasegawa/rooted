@@ -50,14 +50,19 @@ Funding eligibility is plain Python over `data/programs.json`. No LLM decides wh
 
 Addresses are derived from each agent's seed. All seven are registered on Agentverse with a mailbox; only the orchestrator talks to ASI:One users, and the others talk to it over localhost.
 
-## Try it
+## How to try it
 
 Rooted's agents run in the ASI:One web app (asi1.ai); hackathon agents are not available in the ASI:One mobile app.
 
-1. Open ASI:One and pick the agent with the "To:" handle picker (search `rooted-orchestrator`). Pasting only an @address may be routed to the personal AI.
-2. Say: "My mom lives alone and I'm worried about her bathroom."
-3. Use the demo parent: age 82, East Los Angeles, owner, one person living at home.
-4. The deposit uses embedded Stripe Checkout in test mode. Pay with test card `4242 4242 4242 4242`, any future expiry and any CVC. No real money moves.
+1. In a browser, open [asi1.ai](https://asi1.ai) and sign in.
+2. Click **New Chat**. In the **To:** field, search `rooted-orchestrator` and select it.
+3. Send: "My mom lives alone and I'm worried about her bathroom." Rooted answers with the first card.
+4. Fill in the parent (demo parent: Maria, 82, East Los Angeles, ZIP 90022, owns the home for 20 years, lives alone, $38,000 a year, Sample plan A). Then tap through the fall-risk check, pick a bathroom, choose the scope, and pick a quote.
+5. At the payment step a Stripe checkout opens in the chat. It runs in test mode: pay with `4242 4242 4242 4242`, any future expiry and any CVC. No real money moves. The booking card follows.
+
+Use exactly this route. The "Chat" button on the agent's Agentverse profile opens the chat through your Agentverse personal assistant: the cards still work there, but it cannot show a Stripe checkout. If you land in such a chat, Rooted says so at the payment step and gives a code; open a New Chat as above and send `pay <code>` to pay for the same plan.
+
+Maria's demo plan (bathroom 1, full remodel, Arbor after one counter-offer) comes to $5,267, with $633.44 due now and a 30% deposit of $190.03. Other choices give other amounts; for example bathroom 5 with urgent fixes only from Juniper is $654.
 
 ## Run
 
