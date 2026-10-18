@@ -318,8 +318,14 @@ def test_picf_alternative_track():
     assert m["alternatives"][0]["items"] == ["Grab bar inside the tub", "Night light"]
     payload = funding_card(SID, "q_mesa_1", funding, 30, LABELS)[1]
     text = json.dumps(payload)
-    assert "Can wait for approval? PICF may cover these items instead: Grab bar inside the tub, Night light." in text
-    assert "will not pay back work done before approval" in text
+    picf = next(i["children"] for i in payload["root"]["children"] if i.get("type") == "list" for i in i["items"]
+                if i["children"][0]["value"] == "PICF")
+    # Name, amount badge, status badge, one-line source: nothing else per program.
+    assert [c["type"] for c in picf] == ["text", "badge", "badge", "text"]
+    assert picf[1]["label"] == "Could cover $585.50 of these items"
+    assert picf[2]["label"] == "Only if you wait for approval"
+    assert picf[3]["value"] == "Source: picf.org, as of 2026-10-17"
+    assert "no maximum" not in text.lower()
     assert "reimburse" not in text.lower() and "pays back" not in text.lower()
     choices = {(s.get("choice"), s.get("prepare_packet")) for s in cta_selections("custom", payload)}
     assert choices == {("fix_now", "no"), ("fix_now", "yes"), ("wait_picf", None)}
@@ -416,3 +422,20 @@ def test_every_pictured_fix_has_a_price():
 
     for bathroom_id in catalog.BATHROOM_IDS:
         assert set(catalog.fallback_set(bathroom_id)) <= set(PRICES), bathroom_id
+
+
+def test_failover_narration():
+    from agents.orchestrator.flow import quotes_narration
+    assert quotes_narration(["Mesa Handyworks"], 2) == "Mesa Handyworks didn't respond within 15 s, so I compared the other two."
+    assert quotes_narration([], 3) == "3 contractors answered."
+
+
+def test_quote_buttons_are_primary():
+    kind, payload = SAMPLES["06_quotes"]
+    buttons = [c for g in payload["root"]["children"] for c in g["children"] if c["type"] == "button"]
+    assert kind == "custom" and buttons and all(b["primary"] and b["label"] == "Pick this quote" for b in buttons)
+
+
+def test_steadi_cards_say_how_to_answer():
+    from shared.cards import steadi_card
+    assert all("Tap each statement that applies." in steadi_card(SID, part)[1]["title"] for part in (1, 2))

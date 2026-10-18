@@ -44,6 +44,7 @@ BATHROOMS = [
 CONTRACTORS = {c["id"]: c for c in json.loads((ROOT / "data" / "contractors.json").read_text())["contractors"]}
 PROGRAMS = {p["id"]: p for p in json.loads((ROOT / "data" / "programs.json").read_text())["programs"]}
 FULL_REMODEL_ITEMS = [p["id"] for p in PRICES.values() if p["scope"] == "full"]
+NUMBER_WORDS = {1: "one", 2: "two"}
 RESTART = re.compile(r"\b(start over|restart|new plan|reset)\b", re.I)
 
 # The selection action each state is waiting for.
@@ -85,6 +86,7 @@ def save(ctx: Context, s: dict) -> None:
 def new_session(ctx: Context, sender: str, session_id: str) -> dict:
     s = {"session_id": session_id, "sender": sender, "state": "NEW", "data": {}, "card": None}
     ctx.storage.set(_active_key(sender), session_id)
+    ctx.logger.info(f"[{session_id}] new session for sender {sender}")
     return s
 
 
@@ -279,12 +281,17 @@ async def on_get_quotes(ctx: Context, s: dict, sel: dict) -> None:
     missing = [CONTRACTORS[k]["name"] for k, q in zip(CONTRACTOR_KEYS, replies) if q is None]
     if missing:
         ctx.logger.info(f"[{sid}] failover: no quote from {', '.join(missing)}, continuing with {len(quotes)}")
-        await say(ctx, s, f"{' and '.join(missing)} didn't answer within {TIMEOUTS['contractor']} seconds, "
-                          f"so I'm comparing the other {len(quotes)}.")
     quotes = await negotiate(ctx, s, quotes)
     s["data"]["quotes"] = {q.quote_id: q.dict() for q in quotes}
-    await show(ctx, s, f"{len(quotes)} contractor{'s' if len(quotes) != 1 else ''} answered.", cards.quotes_carousel_card(sid, quotes))
+    await show(ctx, s, quotes_narration(missing, len(quotes)), cards.quotes_card(sid, quotes))
     transition(ctx, s, "QUOTES")
+
+
+def quotes_narration(missing: list[str], answered: int) -> str:
+    if not missing:
+        return f"{answered} contractor{'s' if answered != 1 else ''} answered."
+    return (f"{' and '.join(missing)} didn't respond within {TIMEOUTS['contractor']} s, "
+            f"so I compared the other {NUMBER_WORDS.get(answered, answered)}.")
 
 
 async def negotiate(ctx: Context, s: dict, quotes: list[Quote]) -> list[Quote]:
@@ -476,6 +483,9 @@ async def _handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     from agents.orchestrator import billing
 
     text = message_text(msg)
+    if m := billing.RESUME.match(text):
+        await billing.resume(ctx, sender, m.group(1))
+        return
     sel = parse(text)
     session_id = (sel or {}).get("session_id")
     s = load(ctx, session_id) if session_id else None

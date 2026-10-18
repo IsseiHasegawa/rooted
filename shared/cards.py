@@ -10,6 +10,7 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 from uuid import uuid4
 
 from uagents_core.contrib.protocols.chat import ChatMessage, MetadataContent, TextContent
@@ -177,7 +178,7 @@ def steadi_card(session_id: str, part: int, steadi: dict | None = None) -> tuple
     steadi = steadi or load_steadi()
     questions = steadi["questions"][(part - 1) * 6: part * 6]
     return "form", {
-        "title": f"Fall-risk check ({part} of 2): tick what is true for your parent",
+        "title": f"Fall-risk check ({part} of 2) for your parent. Tap each statement that applies.",
         "fields": [{"name": q["id"], "kind": "checkbox", "label": q["text"]} for q in questions],
         "submit_cta": {"label": "Next" if part == 1 else "See the result",
                        "selection": _sel("submit_steadi", session_id, part=str(part))},
@@ -267,9 +268,12 @@ def after_detail_card(session_id: str, bathroom_id: str, marked_url: str, fixes:
     }
 
 
-# ---- 6. quotes (carousel) --------------------------------------------------
+# ---- 6. quotes (custom) ----------------------------------------------------
 
-def quotes_carousel_card(session_id: str, quotes: list, image_by_contractor: dict[str, str] | None = None) -> tuple[str, dict]:
+def quotes_card(session_id: str, quotes: list, image_by_contractor: dict[str, str] | None = None) -> tuple[str, dict]:
+    """One block per quote with a primary "Pick this quote" button.
+
+    A carousel's primary_cta rendered pale enough to look disabled and its schema has no style option."""
     quotes = [_as_dict(q) for q in quotes]
     cheapest = min((q["total_cents"] for q in quotes), default=None)
     earliest = min((q["earliest_date"] for q in quotes), default=None)
@@ -281,24 +285,24 @@ def quotes_carousel_card(session_id: str, quotes: list, image_by_contractor: dic
             badges.append({"label": "Lowest price", "variant": "success"})
         if q["earliest_date"] == earliest and not any(lbl.startswith("Earliest") for lbl in labels):
             badges.append({"label": f"Earliest: {q['earliest_date']}", "variant": "info"})
-        item = {
-            "id": q["quote_id"],
-            "title": q["contractor_name"],
-            "subtitle": f"{len(q.get('items', []))} items · start {q['earliest_date']}",
-            "badges": badges,
-            "secondary_text": f"{usd(q['total_cents'])} · valid until {q['expires_at']}",
-            "primary_cta": {"label": "Pick this quote",
-                            "selection": _sel("pick_quote", session_id, quote_id=q["quote_id"], contractor_id=q["contractor_id"])},
-        }
+        block = [
+            {"type": "heading", "value": q["contractor_name"], "level": 3},
+            {"type": "group", "direction": "row", "gap": 8, "children": [{"type": "badge", **b} for b in badges]},
+            {"type": "text", "value": f"{usd(q['total_cents'])} · {len(q.get('items', []))} items · start {q['earliest_date']} · "
+                                      f"valid until {q['expires_at']}", "style": "emphasis"},
+            {"type": "button", "label": "Pick this quote", "primary": True,
+             "action": {"selection": _sel("pick_quote", session_id, quote_id=q["quote_id"], contractor_id=q["contractor_id"])}},
+        ]
         image = (image_by_contractor or {}).get(q["contractor_id"])
         if image:
-            item["image"] = image_src(image)
-        items.append(item)
-    return "carousel", {
+            block.insert(1, {"type": "image", "src": image_src(image), "alt": q["contractor_name"], "aspect_ratio": "16:9"})
+        items.append({"type": "group", "direction": "column", "gap": 6, "children": block})
+    return "custom", {"root": {
+        "type": "section",
         "title": f"{len(quotes)} contractor quote{'s' if len(quotes) != 1 else ''}",
-        "subtitle": "Priced from national market rates. We asked each one for a better price once.",
-        "items": items,
-    }
+        "subtitle": "Priced from national market rates. We asked the CAPS-certified contractor for a better price once.",
+        "children": items,
+    }}
 
 
 # ---- 7. funding (custom) ---------------------------------------------------
@@ -357,13 +361,6 @@ def today_line(summary: dict) -> str:
             f"{summary['deposit_percent']}% deposit {usd(summary['deposit_cents'])}")
 
 
-def alternative_lines(summary: dict) -> list[str]:
-    # Grants generally don't pay back finished work, so the choice has to be made before anything is charged.
-    return [f"Can wait for approval? {a['name']} may cover these items instead: {', '.join(a['items'])}. "
-            "Nothing is charged if you wait, but it will not pay back work done before approval."
-            for a in summary["alternatives"]]
-
-
 def program_max_cents(program_id: str) -> int | None:
     try:
         programs = json.loads(PROGRAMS_PATH.read_text())["programs"]
@@ -399,16 +396,15 @@ def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: 
         {"type": "text", "value": today_line(m_sum), "style": "emphasis"},
     ]
     children += [{"type": "text", "value": line} for line in grant_lines(m_sum)]
-    children += [{"type": "text", "value": line, "style": "emphasis"} for line in alternative_lines(m_sum)]
+    # Per program only name, amount, status and source; the two track lines above carry the explanation.
     children.append({"type": "heading", "value": "Programs that match" if matches else "No program matched", "level": 3})
     if matches:
         children.append({"type": "list", "items": [
             {"children": [
                 {"type": "text", "value": m["name"], "style": "emphasis"},
-                {"type": "badge", "label": f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") or m.get("alternative_to_pay_now") else usd(m["amount_cents"]), "variant": "success"},
+                {"type": "badge", "label": _amount_label(m), "variant": "success"},
                 {"type": "badge", "label": _track_label(m), "variant": "info" if _track_label(m) == "Applied today" else "warning"},
-                {"type": "text", "value": m.get("next_step") or "", "style": "body"},
-                {"type": "text", "value": f"Source: {m['source_url']} (as of {m['as_of']})", "style": "muted"},
+                {"type": "text", "value": f"Source: {_domain(m['source_url'])}, as of {m['as_of']}", "style": "muted"},
             ]} for m in matches
         ]})
     children.append({"type": "text", "value": "Eligibility is checked with fixed rules from each program's official page.", "style": "muted"})
@@ -429,8 +425,20 @@ def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: 
 
 def _track_label(m: dict) -> str:
     if m.get("alternative_to_pay_now"):
-        return "Alternative, after approval"
+        return "Only if you wait for approval"
     return "After approval" if m.get("funded_later") else "Applied today"
+
+
+def _amount_label(m: dict) -> str:
+    if m.get("alternative_to_pay_now"):
+        # "These items" are the urgent items in the Today line above.
+        return f"Could cover {usd(m['amount_cents'])} of these items"
+    return f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") else usd(m["amount_cents"])
+
+
+def _domain(url: str) -> str:
+    host = urlparse(url).netloc or url
+    return host[4:] if host.startswith("www.") else host
 
 
 def wait_for_program_card(session_id: str, program: dict, item_labels: list[str]) -> tuple[str, dict]:
@@ -771,7 +779,7 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
                 ["Tub with shower", "Step-in shower", "Small bathroom", "Rug and clutter", "Dim bathroom"], 1)
         ], "Maria"),
         "05_after_detail": after_detail_card(session_id, "b1", "assets/bathrooms/b1_after_marked.png", fixes, 74_550, 650_000),
-        "06_quotes": quotes_carousel_card(session_id, quotes),
+        "06_quotes": quotes_card(session_id, quotes),
         "07_funding": funding_card(session_id, "q_mesa_1", funding),
         "08_plan_review": plan_review_card(session_id, "q_mesa_1", labels, "Mesa Handyworks", "2026-10-19", funding),
         "09_consent": consent_card(session_id, "q_mesa_1", "Maria", labels, "2026-10-19"),

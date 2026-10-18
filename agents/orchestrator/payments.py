@@ -34,13 +34,13 @@ def _return_url(session_id: str) -> str:
 
 def create_checkout(*, session_id: str, payer_index: int, kind: str, amount_cents: int, description: str) -> dict:
     """Returns metadata["stripe"] for RequestPayment: ui_mode, publishable_key, client_secret,
-    checkout_session_id, currency, amount_cents (int)."""
+    id and checkout_session_id (the same value), currency, amount_cents (int)."""
     if amount_cents < 50:
         raise PaymentError(f"amount {amount_cents} is below Stripe's minimum charge")
     if STUB:
         cs_id = f"cs_stub_{secrets.token_hex(6)}"
         return {"ui_mode": "embedded", "publishable_key": "pk_stub", "client_secret": f"{cs_id}_secret_stub",
-                "checkout_session_id": cs_id, "currency": CURRENCY, "amount_cents": amount_cents}
+                "id": cs_id, "checkout_session_id": cs_id, "currency": CURRENCY, "amount_cents": amount_cents}
     stripe = _stripe()
     try:
         # Never pass payment_method_types. The horoscope sample, the only shape proven to render in ASI:One's
@@ -64,8 +64,9 @@ def create_checkout(*, session_id: str, payer_index: int, kind: str, amount_cent
         )
     except Exception as e:
         raise PaymentError(f"checkout create failed: {type(e).__name__}") from None
+    # "id" duplicates checkout_session_id because the horoscope sample, whose checkout renders in ASI:One, sends both.
     return {"ui_mode": "embedded", "publishable_key": os.getenv("STRIPE_PUBLISHABLE_KEY", ""),
-            "client_secret": session.client_secret, "checkout_session_id": session.id,
+            "client_secret": session.client_secret, "id": session.id, "checkout_session_id": session.id,
             "currency": CURRENCY, "amount_cents": amount_cents}
 
 

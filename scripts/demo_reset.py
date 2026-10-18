@@ -17,7 +17,7 @@ sys.path.insert(0, str(ROOT))
 from shared.runtime import AGENTS, address_of  # noqa: E402
 
 # Per-chat state only; anything else in an agent's storage is kept.
-SESSION_PREFIXES = ("session:", "active:", "checkout:", "join:", "payer:", "quote:")
+SESSION_PREFIXES = ("session:", "active:", "checkout:", "join:", "payer:", "quote:", "resume:")
 
 
 def port_open(port: int) -> bool:

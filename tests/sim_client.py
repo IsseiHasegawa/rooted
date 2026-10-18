@@ -274,12 +274,14 @@ async def flow(ctx: Context) -> int:
         print(f"PASS  {label:14s} {time.monotonic() - t0:5.1f}s  {kind:8s} -> {action}  {' | '.join(texts)[:90]}")
         if label == "FUNDING":
             print(f"        funding: {json.dumps(funding_numbers(payload))}")
-        if kind == "carousel":
+        if label == "QUOTES":
             for line in texts:
                 print(f"        chat: {line}")
-            for item in payload["items"]:
-                badges = ", ".join(b["label"] for b in item["badges"])
-                print(f"        quote: {item['title']}: {item['secondary_text']} [{badges}]")
+            for block in payload["root"]["children"]:
+                kids = block["children"]
+                badges = ", ".join(b["label"] for b in next(k for k in kids if k["type"] == "group")["children"])
+                price = next(k["value"] for k in kids if k["type"] == "text")
+                print(f"        quote: {kids[0]['value']}: {price} [{badges}]")
         if label == "CONSENT":
             # A dismissed consent card (approved=false) must come back, not advance to SPLIT.
             await ctx.send(orch, text_message(json.dumps({"selection": sel, "approved": False})))
@@ -296,12 +298,13 @@ async def flow(ctx: Context) -> int:
             ok = title.startswith("Waiting for") and "Nothing has been charged" in json.dumps(payload)
             print(f"{'PASS' if ok else 'FAIL'}  {'WAIT_PICF':14s}        {kind:8s} {title}  {' | '.join(texts)[:60]}")
             return 0 if ok else 1
-    texts, (kind, payload) = await next_card()
-    title = payload["root"].get("title")
-    if SIM_DEMO and payload["root"].get("subtitle") != "0 of 2 paid":
-        print(f"FAIL  {'PAY':14s} demo defaults should give 2 payers: {payload['root'].get('subtitle')}")
+    # The payment request goes out on its own (pay_inbox), followed by text naming the pending share.
+    texts = await drain_chat(5)
+    share = next((t for t in texts if t.startswith("Your share is")), None)
+    if share is None or "leo's share is pending" not in share.lower():
+        print(f"FAIL  {'PAY':14s} no share text naming Leo's pending share: {texts}")
         return 1
-    print(f"PASS  {'PAY':14s}        {kind:8s} {title}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")
+    print(f"PASS  {'PAY':14s}        {share}")
     print("flow reached PAY")
     return 0
 

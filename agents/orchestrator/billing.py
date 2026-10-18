@@ -8,7 +8,11 @@ Storage key checkout:<checkout_session_id> points back to the chat session.
 """
 import asyncio
 import re
+import secrets
+import time
 from datetime import date, timedelta
+
+import requests
 
 from uagents import Context, Protocol
 from uagents_core.contrib.protocols.payment import (
@@ -27,6 +31,9 @@ from shared.models import BookConfirm, BookRequest
 from shared.runtime import text_message
 
 RESEND = re.compile(r"\b(pay|resend|again|checkout|link)\b", re.I)
+RESUME = re.compile(r"^\s*pay\s+([0-9a-f]{6})\s*\.?\s*$", re.I)
+ALMANAC_URL = "https://agentverse.ai/v1/almanac/agents/{address}"
+DEADLINE_SECONDS = 300  # as in the horoscope sample; "pay" sends a fresh checkout after it lapses
 STUB_PAID = re.compile(r"^/stub-paid\s+(cs_stub_[0-9a-f]+)\s*$")
 RETRY_TEXT = "Your payment isn't finished yet. Please finish checkout, then press Pay again."
 KIND_BY_STATE = {"PAY": "deposit", "BALANCE": "balance"}
@@ -53,6 +60,65 @@ async def show_status(ctx: Context, s: dict, kind: str, narration: str) -> None:
     await flow.show(ctx, s, narration, cards.payment_status_card(s["session_id"], _status_rows(s, kind), title), terminal=True)
 
 
+# ---- who can pay -----------------------------------------------------------
+
+_almanac_cache: dict[str, tuple[float, bool]] = {}
+
+
+def sender_can_pay(address: str) -> bool:
+    """False when the sender is an Agentverse personal-assistant proxy.
+
+    In session 696586e1 the chat came through such a proxy (Almanac type "proxy", chat protocol only):
+    cards reached the user but the RequestPayment never rendered. The checkout that did render came from
+    the ASI:One agent at api.asi1.ai. Unknown or unreachable lookups count as able to pay.
+    """
+    if payments.STUB:
+        return True
+    hit = _almanac_cache.get(address)
+    if hit and time.monotonic() - hit[0] < 600:
+        return hit[1]
+    try:
+        resp = requests.get(ALMANAC_URL.format(address=address), timeout=5)
+        can = resp.status_code != 200 or resp.json().get("type") != "proxy"
+    except (requests.RequestException, ValueError):
+        return True
+    _almanac_cache[address] = (time.monotonic(), can)
+    return can
+
+
+def resume_code(ctx: Context, s: dict) -> str:
+    """A short code that hands this plan's payment to another chat (one that can open a Stripe checkout)."""
+    code = s["data"].get("resume_code")
+    if not code:
+        code = secrets.token_hex(3)
+        s["data"]["resume_code"] = code
+        ctx.storage.set(f"resume:{code}", s["session_id"])
+        flow.save(ctx, s)
+    return code
+
+
+async def ask_for_direct_chat(ctx: Context, s: dict, address: str) -> None:
+    code = resume_code(ctx, s)
+    ctx.logger.info(f"[{s['session_id']}] sender {address} is a personal-assistant proxy; payment handed to resume code")
+    await tell(ctx, address, "Your plan is saved, but this chat reaches me through your Agentverse personal assistant, "
+                             "which can't open a Stripe checkout. To pay, open a new chat with rooted-orchestrator in the "
+                             f"ASI:One web app (asi1.ai) and send: pay {code}")
+
+
+async def resume(ctx: Context, sender: str, code: str) -> None:
+    """`pay <code>` from another chat: that chat takes over this plan's payments."""
+    sid = ctx.storage.get(f"resume:{code.lower()}")
+    s = flow.load(ctx, sid) if sid else None
+    if s is None or s["state"] not in KIND_BY_STATE:
+        await tell(ctx, sender, "I couldn't find a payment waiting for that code. Say \"start over\" to make a new plan.")
+        return
+    ctx.logger.info(f"[{s['session_id']}] resume code used: payments move from {s['sender']} to {sender}")
+    s["sender"] = sender
+    ctx.storage.set(flow._active_key(sender), s["session_id"])
+    flow.save(ctx, s)
+    await request_charge(ctx, s, KIND_BY_STATE[s["state"]], sender)
+
+
 # ---- requesting money ------------------------------------------------------
 
 async def request_charge(ctx: Context, s: dict, kind: str, address: str) -> None:
@@ -62,6 +128,9 @@ async def request_charge(ctx: Context, s: dict, kind: str, address: str) -> None
     if charge["paid"]:
         return
     label = "30% deposit share" if kind == "deposit" else "balance share"
+    if not await asyncio.to_thread(sender_can_pay, address):
+        await ask_for_direct_chat(ctx, s, address)
+        return
     try:
         stripe_meta = await asyncio.to_thread(
             payments.create_checkout, session_id=sid, payer_index=0, kind=kind, amount_cents=charge["amount_cents"],
@@ -75,16 +144,20 @@ async def request_charge(ctx: Context, s: dict, kind: str, address: str) -> None
     charge["checkout_session_id"] = stripe_meta["checkout_session_id"]
     ctx.storage.set(f"checkout:{charge['checkout_session_id']}", {"session_id": sid, "kind": kind})
     flow.save(ctx, s)
-    await ctx.send(address, RequestPayment(
+    # Same shape as the horoscope sample's RequestPayment, the one proven to render in ASI:One: reference is
+    # this chat's session, and nothing but text follows it.
+    status = await ctx.send(address, RequestPayment(
         accepted_funds=[Funds(currency="USD", amount=f"{charge['amount_cents'] / 100:.2f}", payment_method="stripe")],
         recipient=str(ctx.agent.address),
-        deadline_seconds=1800,
-        reference=sid,
+        deadline_seconds=DEADLINE_SECONDS,
+        reference=str(ctx.session),
         description=f"Rooted {label}: {cards.usd(charge['amount_cents'])}",
         metadata={"stripe": stripe_meta, "service": "rooted_home_safety"},
     ))
-    ctx.logger.info(f"[{sid}] RequestPayment {kind} checkout_session_id={charge['checkout_session_id']}")
-    await tell(ctx, address, f"Your share is {cards.usd(charge['amount_cents'])}. Complete checkout, then press Pay.")
+    ctx.logger.info(f"[{sid}] RequestPayment {kind} to={address} checkout_session_id={charge['checkout_session_id']} "
+                    f"delivery={getattr(status, 'status', status)}")
+    pending = "".join(f" {cards.pending_line(p['name'])}" for p in _pending(s, kind))
+    await tell(ctx, address, f"Your share is {cards.usd(charge['amount_cents'])}.{pending} Complete checkout, then press Pay.")
 
 
 async def start_deposits(ctx: Context, s: dict, shares: list[int], names: list[str]) -> None:
@@ -92,7 +165,7 @@ async def start_deposits(ctx: Context, s: dict, shares: list[int], names: list[s
     s["data"]["payers"] = [{"name": name, "charges": {"deposit": {"amount_cents": amount, "paid": False}}}
                            for name, amount in zip(names, shares)]
     flow.transition(ctx, s, "PAY")
-    await show_status(ctx, s, "deposit", "Here is everyone's share of the deposit.")
+    # No status card first: the payment request goes out on its own, then text, as in the horoscope sample.
     await request_charge(ctx, s, "deposit", s["sender"])
 
 
