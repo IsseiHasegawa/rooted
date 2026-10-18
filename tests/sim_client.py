@@ -212,6 +212,12 @@ async def flow(ctx: Context) -> int:
             return 1
         sel = answer(payload)
         print(f"PASS  {label:14s} {time.monotonic() - t0:5.1f}s  {kind:8s} -> {action}  {' | '.join(texts)[:90]}")
+        if kind == "carousel":
+            for line in texts:
+                print(f"        chat: {line}")
+            for item in payload["items"]:
+                badges = ", ".join(b["label"] for b in item["badges"])
+                print(f"        quote: {item['title']}: {item['secondary_text']} [{badges}]")
         await ctx.send(orch, text_message(json.dumps(sel)))
     texts, (kind, payload) = await next_card()
     print(f"PASS  {'PAY':14s}        {kind:8s} {payload['root'].get('title')}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")

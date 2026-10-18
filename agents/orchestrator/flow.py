@@ -16,13 +16,16 @@ from shared import cards
 from shared.models import (
     AssessRequest,
     AssessResult,
+    CounterOffer,
     FundingRequest,
     FundingResult,
     LineItem,
     Quote,
+    QuotedItem,
     QuoteRequest,
     RenderRequest,
     RenderResult,
+    RevisedQuote,
 )
 from shared.runtime import CONTRACTOR_KEYS, ROOT, address_of, message_text, text_message
 
@@ -34,6 +37,7 @@ BATHROOMS = [
     {"id": f"b{i}", "label": label, "image": f"bathrooms/b{i}.png"}
     for i, label in enumerate(["Tub with shower", "Step-in shower", "Small bathroom", "Rug and clutter", "Dim bathroom"], 1)
 ]
+CONTRACTORS = {c["id"]: c for c in json.loads((ROOT / "data" / "contractors.json").read_text())["contractors"]}
 FULL_REMODEL_ITEMS = [p["id"] for p in PRICES.values() if p["scope"] == "full"]
 RESTART = re.compile(r"\b(start over|restart|new plan|reset)\b", re.I)
 
@@ -246,9 +250,41 @@ async def on_get_quotes(ctx: Context, s: dict, sel: dict) -> None:
     if not quotes:
         await resend_card(ctx, s, "No contractor answered in time. Please try again.")
         return
+    missing = [CONTRACTORS[k]["name"] for k, q in zip(CONTRACTOR_KEYS, replies) if q is None]
+    if missing:
+        ctx.logger.info(f"[{sid}] failover: no quote from {', '.join(missing)}, continuing with {len(quotes)}")
+        await say(ctx, s, f"{' and '.join(missing)} didn't answer within {TIMEOUTS['contractor']} seconds, "
+                          f"so I'm comparing the other {len(quotes)}.")
+    quotes = await negotiate(ctx, s, quotes)
     s["data"]["quotes"] = {q.quote_id: q.dict() for q in quotes}
-    await show(ctx, s, f"{len(quotes)} contractors answered.", cards.quotes_carousel_card(sid, quotes))
+    await show(ctx, s, f"{len(quotes)} contractor{'s' if len(quotes) != 1 else ''} answered.", cards.quotes_carousel_card(sid, quotes))
     transition(ctx, s, "QUOTES")
+
+
+async def negotiate(ctx: Context, s: dict, quotes: list[Quote]) -> list[Quote]:
+    """One round: ask the CAPS-certified contractor to match the lowest other quote."""
+    caps = next((q for q in quotes if CONTRACTORS.get(q.contractor_id, {}).get("caps_certified")), None)
+    others = [q.total_cents for q in quotes if q is not caps]
+    if caps is None or not others or min(others) >= caps.total_cents:
+        return quotes
+    target = min(others)
+    revised = await call(ctx, s, caps.contractor_id, CounterOffer(session_id=s["session_id"], quote_id=caps.quote_id, target_cents=target),
+                         RevisedQuote, TIMEOUTS["contractor"])
+    if revised is None or not revised.total_cents or revised.total_cents >= caps.total_cents:
+        await say(ctx, s, f"I asked {caps.contractor_name} for a better price; they kept {cards.usd(caps.total_cents)}.")
+        return quotes
+    ctx.logger.info(f"[{s['session_id']}] negotiation {caps.quote_id}: {caps.total_cents} -> {revised.total_cents} accepted={revised.accepted}")
+    verb = "agreed to match" if revised.accepted else "came down to"
+    await say(ctx, s, f"I asked {caps.contractor_name} to match {cards.usd(target)}. They {verb} "
+                      f"{cards.usd(revised.total_cents)} (was {cards.usd(caps.total_cents)}).")
+    # Spread the discount over the items so the line items still add up to the total.
+    ratio = revised.total_cents / caps.total_cents
+    items = [QuotedItem(item_id=i.item_id, label=i.label, price_cents=round(i.price_cents * ratio)) for i in caps.items]
+    if items:
+        items[-1].price_cents += revised.total_cents - sum(i.price_cents for i in items)
+    updated = Quote(**{**caps.dict(), "total_cents": revised.total_cents, "items": [i.dict() for i in items],
+                       "badges": caps.badges + ["Negotiated"]})
+    return [updated if q is caps else q for q in quotes]
 
 
 async def on_pick_quote(ctx: Context, s: dict, sel: dict) -> None:
