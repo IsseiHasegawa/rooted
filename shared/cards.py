@@ -762,7 +762,7 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
         "12_booking": booking_card(session_id, "bk_mesa_7f3a", "Mesa Handyworks", "2026-10-19", 8_783, 40_985,
                                    [{"name": "Leo", "amount_cents": 8_782}]),
         "07b_wait_picf": wait_for_program_card(session_id, _program("picf_hud_home_modification"), labels),
-        "13_completion": completion_card(session_id, "bk_mesa_7f3a", "assets/bathrooms/b1_after.png", 40_985),
+        "13_completion": completion_card(session_id, "bk_mesa_7f3a", "assets/fallback/b1/after.png", 40_985),
     }
 
 

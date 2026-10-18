@@ -220,7 +220,7 @@ async def complete(ctx: Context, s: dict) -> None:
     for p, amount in zip(payers, shares):
         p["charges"]["balance"] = {"amount_cents": amount, "paid": False}
     booking = s["data"].get("booking", {})
-    photo = f"assets/bathrooms/{s['data'].get('bathroom_id', 'b1')}_after.png"
+    photo = f"assets/fallback/{s['data'].get('bathroom_id', 'b1')}/after.png"
     await flow.show(ctx, s, "The work is done and passed the completion check.",
                     cards.completion_card(sid, booking.get("booking_id", ""), photo, m["balance_cents"]), terminal=True)
     flow.transition(ctx, s, "BALANCE")
