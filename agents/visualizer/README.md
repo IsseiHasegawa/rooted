@@ -22,4 +22,4 @@ Rooted talks to this agent through rooted-orchestrator. To start, chat with root
 
 - After images are AI-generated illustrations of the proposed fixes, not a guarantee of how the finished work will look.
 - Bathroom images come from a small set of representative photos.
-- Image URLs are full URLs built from `ROOTED_IMAGE_BASE_URL` (https mode); an `agent-storage` mode exists for Agentverse storage. The scheme in production is pending the card image test.
+- Image URLs are public https URLs built from `ROOTED_IMAGE_BASE_URL` plus the asset path.
