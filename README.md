@@ -3,19 +3,42 @@
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
 
-Rooted helps families make an older parent's home safer so they can age in place. The whole flow runs inside an ASI:One chat, using the Agent Chat Protocol and ASI:One Interactive Cards. There is no custom frontend.
+**Help aging parents stay safe at home, from fall-risk check to a booked, paid contractor, in one ASI:One chat.**
 
-## Pitch
+Demo video: TODO · Devpost: TODO
 
-A family worried about a parent's bathroom usually faces four separate problems: how risky is it, what would the fix look like, who will do it at a fair price, and who pays. Rooted answers all four in one conversation:
+Rooted runs entirely inside an ASI:One chat, using the Agent Chat Protocol, ASI:One Interactive Cards and the Agent Payment Protocol. There is no custom frontend.
 
-1. A CDC STEADI fall-risk screening (12 questions) for the parent.
-2. A picture of the bathroom after the fixes, with numbered hazard markers.
-3. Three contractor quotes and one negotiation round.
-4. A deterministic check of grants and insurance benefits the parent may qualify for, with the source page for every rule.
-5. A plan the parent consents to, a family payment split, and a 30% Stripe deposit. The final 70% is paid after completion.
+## The problem
 
-Rooted does not replace an occupational therapist. It produces an OT-ready plan, and fall-prevention home modifications are most useful for people at high risk of falling.
+- About 1 in 4 adults aged 65 and older falls each year, and deaths from falls among older adults rose 51% in a decade ([NSC Injury Facts](https://injuryfacts.nsc.org/home-and-community/safety-topics/older-adult-falls/)).
+- 75% of adults 50 and older want to stay in their current home for as long as possible ([AARP 2024 Home and Community Preferences](https://www.aarp.org/pri/topics/livable-communities/housing/2024-home-community-preferences/)).
+- A private nursing-home room costs a national median of $129,575 a year ([CareScout Cost of Care 2025](https://www.carescout.com/cost-of-care)).
+
+Families who want to keep a parent at home face four separate questions: how risky is the home, what should change, who will do it at a fair price, and who pays. Today each one means a different website, phone call or form. Rooted answers all four in one conversation.
+
+## The journey, with Maria
+
+Maria is 82, owns her home in East Los Angeles and lives alone. Her daughter opens a chat with Rooted.
+
+1. **About Maria.** A short form: age, community, owner or renter, household size, income, health plan, main worry.
+2. **Fall-risk check.** The CDC STEADI 12-question screening, scored by fixed rules. Maria has fallen in the past year, so she is at risk, and Rooted names the top hazards from the CDC home-safety checklist.
+3. **What would change.** The daughter picks the bathroom layout closest to Maria's, or attaches a photo of the real one. Rooted shows it with the fixes added and a numbered fix list.
+4. **Three quotes.** Three contractor agents quote in parallel. Rooted asks the CAPS-certified one to match the lowest price once: Arbor comes down from $5,725 to $5,267 for the full remodel.
+5. **Who pays.** Fixed rules over published program pages: Maria's health plan covers $500 of the urgent fixes now, and the LACDA Senior Grant may cover the remodel work after approval (approval is not guaranteed). That leaves $633 due today.
+6. **Review and consent.** The daughter approves the plan, then Maria sees it and agrees. Nothing is booked without her consent.
+7. **Split and pay.** The 30% deposit ($190.03) is split with Leo, another family member. The daughter pays her half with Stripe inside the chat, and the contractor is booked.
+8. **After the work.** Once the work passes a completion check, Rooted asks for the remaining balance the same way.
+
+Rooted lowers fall rates for people who are already at high risk by fixing the home, and it produces a plan an occupational therapist can review. It does not replace an occupational therapist.
+
+## Why it fits the ASI:One Agent Challenge
+
+- **Multi-agent orchestration.** Seven agents on Agentverse: an orchestrator that owns the chat and session state, plus risk, visualizer, funding and three independent contractor agents. They exchange typed messages (`shared/models.py`); the orchestrator fans out to the contractors in parallel and runs one negotiation round.
+- **Payments.** The orchestrator is the seller in the Agent Payment Protocol with embedded Stripe Checkout. Amounts are computed on the server only, a payment counts only after Stripe reports it paid, and the deposit and balance are separate payments. Business model: a 5% booking fee paid by the contractor on each booked job (not charged in this demo).
+- **Reliability.** A contractor that doesn't answer within 15 s is reported in the chat and the other quotes are compared; a photo that can't be downloaded, edited or uploaded falls back to the layout picker; every external call has a fallback reply.
+- **Trustworthy eligibility.** Funding is plain Python over `data/programs.json`; no LLM decides who qualifies. Every program and price carries its source URL and date, and the cards show the source.
+- **Real-world impact.** A family goes from worry to a booked, partly funded fix in one conversation, with the parent's consent built in.
 
 ## Architecture
 
@@ -36,6 +59,12 @@ flowchart TD
 
 Funding eligibility is plain Python over `data/programs.json`. No LLM decides who qualifies. Contractor requests go out in parallel with a 15 s timeout, and the flow continues with whoever answers.
 
+## Using a photo of the real bathroom
+
+On the bathroom step the family can attach a photo with the **+** button instead of picking a layout. ASI:One forwards the attachment to the orchestrator as an image link inside the message text. The visualizer downloads it (https, image types only, up to 10 MB), adds the fixes with the Gemini image model, and the orchestrator stores the edited picture in Agentverse storage for 24 hours, readable only by that chat, and sends it as an image message, followed by the fix list. If the download, the edit or the upload fails, or takes more than 30 s, Rooted says so and shows the layout picker instead.
+
+A photo always gets the four core fixes, worded to fit a tub or a shower. Amounts can differ by cents from the picker path: in one recorded run the photo path showed $633.00 due now, against $633.44 for the picker path.
+
 ## Agents
 
 | Agent | Role | Address | Agentverse profile |
@@ -55,9 +84,11 @@ Addresses are derived from each agent's seed. All seven are registered on Agentv
 Rooted's agents run in the ASI:One web app (asi1.ai); hackathon agents are not available in the ASI:One mobile app.
 
 1. In a browser, open [asi1.ai](https://asi1.ai) and sign in.
-2. Click **New Chat**. In the **To:** field, search `rooted-orchestrator` and select it.
+2. Click **New Chat**. In the **To:** field, paste the orchestrator's address and select it:
+   `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t`
+   Searching by name also lists other teams' agents called "Rooted", so use the address.
 3. Send: "My mom lives alone and I'm worried about her bathroom." Rooted answers with the first card.
-4. Fill in the parent (demo parent: Maria, 82, East Los Angeles, ZIP 90022, owns the home for 20 years, lives alone, $38,000 a year, Sample plan A). Then tap through the fall-risk check, pick a bathroom, choose the scope, and pick a quote.
+4. Fill in the parent (demo parent: Maria, 82, East Los Angeles, ZIP 90022, owns the home for 20 years, lives alone, $38,000 a year, Sample plan A). Then tap through the fall-risk check, pick a bathroom or attach a photo, choose the scope, and pick a quote.
 5. At the payment step a Stripe checkout opens in the chat. It runs in test mode: pay with `4242 4242 4242 4242`, any future expiry and any CVC. No real money moves. The booking card follows.
 
 Use exactly this route. The "Chat" button on the agent's Agentverse profile opens the chat through your Agentverse personal assistant: the cards still work there, but it cannot show a Stripe checkout. If you land in such a chat, Rooted says so at the payment step and gives a code; open a New Chat as above and send `pay <code>` to pay for the same plan.
@@ -95,7 +126,7 @@ cp .env.example .env          # then fill in the keys listed in the file
 - Contractor failover: `CONTRACTOR_OFFLINE=mesa .venv/bin/python scripts/run_all.py` makes Mesa stop answering. After 15 s the orchestrator says so and compares the other two quotes. Killing the contractor-mesa process mid-run has the same effect.
 - Before each demo run: `scripts/demo_restart.sh`. In one command it stops the agents, runs `scripts/demo_reset.py` (forgets every chat session and expires open Rooted checkouts in Stripe test mode), starts all 7 agents in the background with `DEMO_MODE=1 CONTRACTOR_OFFLINE=mesa` (log in `out/run_all.log`), waits until they listen, and reconnects the mailboxes, which also republishes each README to Agentverse. It takes about 20 s. Stop the agents with `pkill -f scripts/run_all.py`.
 - `scripts/demo_reset.py` alone refuses to run while the agents are up, because they would write their in-memory sessions back; `--dry-run` shows what it would do.
-- Demo run: `scripts/demo_restart.sh`, then in ASI:One (asi1.ai, New Chat, To: `rooted-orchestrator`): "Start over", Continue on the blank intake, tick "fallen" and two or three more STEADI items, Find the fixes, bathroom b1, Full bathroom remodel too, Get 3 quotes, Arbor, Fix it now, Approve, Maria agrees, Send payment requests, pay with `4242 4242 4242 4242`. Send `/complete` to collect the balance.
+- Demo run: `scripts/demo_restart.sh`, then in ASI:One (asi1.ai, New Chat, To: the orchestrator's address): "Start over", Continue on the blank intake, tick "fallen" and two or three more STEADI items, Find the fixes, bathroom b1, Full bathroom remodel too, Get 3 quotes, Pick this quote under Arbor, Fix it now, Approve, Maria agrees, Send payment requests, pay with `4242 4242 4242 4242`. Send `/complete` to collect the balance.
 
 ## Data sources
 
@@ -119,7 +150,8 @@ Every program and price record carries `source_url` and `as_of`, and the cards s
 - Contractors are fictional. Their prices come from national market averages, not local bids.
 - Payments run in Stripe test mode.
 - NHS LA County and CMS facts are unverified (see the table). NHS publishes no income limit, so Rooted uses the LACDA table as a labeled proxy.
-- LACDA also requires a single-family home, condominium or townhome. Rooted does not check property type; the plan step reminds the family to confirm with LACDA.
+- LACDA also requires a single-family home, condominium or townhome. Rooted does not check property type; families must confirm it with LACDA.
 - Funding results come from public pages and can change. Families must confirm with each program.
-- After images are AI-generated illustrations, and bathroom images come from a small representative set. Image hosting for production is TBD.
+- The after image is an AI preview of the fixes; the contractor confirms on site what fits.
+- An uploaded photo is used only for that chat. The original is not stored. The edited version is kept in Agentverse storage for 24 hours, readable only by that chat, and in the Rooted server's local image cache (`assets/cache`, never committed) so the same photo is not edited twice.
 - Rooted is not medical advice. It does not replace an occupational therapist. It produces an OT-ready plan.
