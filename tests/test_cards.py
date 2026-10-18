@@ -173,8 +173,21 @@ def test_image_src_switchable():
 def test_bathroom_picker_uses_repo_relative_assets():
     from shared.cards import bathroom_pick_card
     payload = bathroom_pick_card(SID, [{"id": "b1", "label": "Tub"}])[1]
-    choice = payload["root"]["children"][0]["choices"][0]
-    assert choice["image"] == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/assets/bathrooms/b1.png"
+    image, button = payload["root"]["children"][0]["children"][1:]
+    assert image["src"] == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/assets/bathrooms/b1.png"
+    assert button["action"]["selection"] == {"action": "pick_bathroom", "session_id": SID, "bathroom_id": "b1"}
+
+
+def test_bathroom_picker_shows_full_width_images_in_a_wide_drawer():
+    from shared.cards import WIDE_DRAWER_PX, bathroom_pick_card
+    rooms = [{"id": f"b{i}", "label": f"Room {i}"} for i in range(1, 6)]
+    kind, payload = bathroom_pick_card(SID, rooms)
+    images = [g["children"][1] for g in payload["root"]["children"]]
+    assert [i["aspect_ratio"] for i in images] == ["16:9"] * 5
+    assert element_depth(payload["root"]) <= MAX_DEPTH
+    meta = card_metadata(kind, payload, drawer_width_px=WIDE_DRAWER_PX)
+    assert meta["preferred_drawer_width_px"] == "800"
+    assert "preferred_drawer_width_px" not in card_metadata(kind, payload)
 
 
 def test_card_message_and_terminal_flag():
@@ -369,3 +382,37 @@ def test_demo_with_defaults_fills_only_blanks(monkeypatch):
     assert sel["parent_name"] == "Rosa" and sel["age"] == "82" and sel["insurance_plan"] == "sample_ma_plan_a"
     monkeypatch.setattr(demo, "DEMO_MODE", False)
     assert demo.with_defaults({"age": ""}, demo.MARIA_INTAKE) == {"age": ""}
+
+
+def test_fix_list_follows_the_markers_on_b1():
+    # Regression: the card listed the hazard fixes (mat, night light, tub bar) while the b1 image numbers
+    # tub bar, toilet bar, mat, night light.
+    from agents.orchestrator.flow import marker_order
+    from agents.visualizer import catalog
+
+    hazards = ["non_slip_mat", "night_light", "grab_bar_tub"]
+    assert marker_order(catalog.fallback_set("b1"), hazards) == ["grab_bar_tub", "grab_bar_toilet", "non_slip_mat", "night_light"]
+    # A step-in shower: its shower grab bar stands in for the tub bar; an unpictured fix of a new kind stays, last.
+    assert marker_order(catalog.fallback_set("b2"), hazards + ["handheld_shower"]) == [
+        "grab_bar_shower", "non_slip_mat", "night_light", "handheld_shower"]
+    # No picture: the hazard order stands.
+    assert marker_order([], hazards) == hazards
+
+
+def test_static_render_reports_marker_order(monkeypatch):
+    import asyncio
+
+    from agents.visualizer import catalog, render
+
+    monkeypatch.setenv("ROOTED_IMAGE_BASE_URL", "https://example.test/")
+    out = asyncio.run(render.render("b1", ["non_slip_mat", "night_light", "grab_bar_tub"]))
+    assert out["fix_item_ids"] == catalog.fallback_set("b1")
+
+
+def test_every_pictured_fix_has_a_price():
+    # An unpriced fix would drop out of the list and shift every "Fix n" off its marker.
+    from agents.orchestrator.flow import PRICES
+    from agents.visualizer import catalog
+
+    for bathroom_id in catalog.BATHROOM_IDS:
+        assert set(catalog.fallback_set(bathroom_id)) <= set(PRICES), bathroom_id

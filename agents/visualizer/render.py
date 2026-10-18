@@ -129,7 +129,7 @@ def _static_set(bathroom_id: str) -> dict | None:
 
 
 async def render(bathroom_id: str, fix_ids: list[str], session_id: str = "-") -> dict:
-    """Return local paths {before, after, marked, cached, source}."""
+    """Return local paths {before, after, marked, cached, source, fix_item_ids (marker order)}."""
     t0 = time.monotonic()
     if os.getenv("ROOTED_IMAGE_BASE_URL"):
         # Only committed files are reachable over https, so serve the nearest pre-rendered set.
@@ -138,7 +138,7 @@ async def render(bathroom_id: str, fix_ids: list[str], session_id: str = "-") ->
         log.info("[%s] render %s static=%s", session_id, bathroom_id, bool(static))
         if static is None:
             raise FileNotFoundError(bathroom_id)
-        return static
+        return {**static, "fix_item_ids": catalog.fallback_set(bathroom_id)}
     key = cache_key(bathroom_id, fix_ids)
     before = _before_path(bathroom_id)
     # Results built on a placeholder "before" must never poison the real cache.
@@ -151,7 +151,7 @@ async def render(bathroom_id: str, fix_ids: list[str], session_id: str = "-") ->
 
     if after.exists() and marked.exists():
         log.info("[%s] render %s cache hit %.2fs", session_id, bathroom_id, time.monotonic() - t0)
-        return {"before": before, "after": after, "marked": marked, "cached": True, "source": "cache"}
+        return {"before": before, "after": after, "marked": marked, "cached": True, "source": "cache", "fix_item_ids": fix_ids}
 
     source = "gemini"
     if not after.exists():
@@ -168,7 +168,7 @@ async def render(bathroom_id: str, fix_ids: list[str], session_id: str = "-") ->
         source = "cache"
     draw_markers(after, marked, bathroom_id, fix_ids)
     log.info("[%s] render %s source=%s %.2fs", session_id, bathroom_id, source, time.monotonic() - t0)
-    return {"before": before, "after": after, "marked": marked, "cached": False, "source": source}
+    return {"before": before, "after": after, "marked": marked, "cached": False, "source": source, "fix_item_ids": fix_ids}
 
 
 def waterfall_path(total_cents: int, covered: list[tuple[str, int]], family_share_cents: int, out_dir: Path = CHARTS) -> Path:

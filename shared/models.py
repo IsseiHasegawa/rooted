@@ -55,6 +55,9 @@ class RenderResult(Model):
     marked_url: str
     cached: bool = False
     error: str | None = None
+    # The fixes drawn on marked_url, in marker order: marker n is fix_item_ids[n - 1].
+    # May differ from the request when a pre-rendered image is served.
+    fix_item_ids: list[str] = []
 
 
 class ProgramAmount(Model):

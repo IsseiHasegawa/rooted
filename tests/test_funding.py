@@ -25,7 +25,8 @@ def _price_items():
     return [
         {"item": LineItem(id=i["id"], label=i["label"], category=i["category"],
                           unit_price_cents=i["unit_price_cents"], structural=i["structural"])}
-        for i in data
+        # A shower grab bar replaces the tub bar in a step-in shower; the tub bathroom basket never has both.
+        for i in data if i["id"] != "grab_bar_shower"
     ]
 
 

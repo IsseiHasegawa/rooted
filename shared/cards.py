@@ -49,15 +49,17 @@ LOW_RISK_TIPS = [
 
 # ---- message envelope ------------------------------------------------------
 
-def card_message(narration: str, card_kind: str, payload: dict, *, terminal: bool = False) -> ChatMessage:
+def card_message(narration: str, card_kind: str, payload: dict, *, terminal: bool = False,
+                 drawer_width_px: int | None = None) -> ChatMessage:
     content = []
     if narration:
         content.append(TextContent(type="text", text=narration))
-    content.append(MetadataContent(type="metadata", metadata=card_metadata(card_kind, payload, terminal=terminal)))
+    content.append(MetadataContent(type="metadata", metadata=card_metadata(card_kind, payload, terminal=terminal,
+                                                                           drawer_width_px=drawer_width_px)))
     return ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=content)
 
 
-def card_metadata(card_kind: str, payload: dict, *, terminal: bool = False) -> dict[str, str]:
+def card_metadata(card_kind: str, payload: dict, *, terminal: bool = False, drawer_width_px: int | None = None) -> dict[str, str]:
     metadata = {
         "card_protocol_version": "1",
         "requires_card_interaction": "true",
@@ -66,6 +68,9 @@ def card_metadata(card_kind: str, payload: dict, *, terminal: bool = False) -> d
     }
     if terminal:
         metadata["is_terminal"] = "true"
+    if drawer_width_px:
+        # A UI hint; ASI:One clamps it to [320, 800].
+        metadata["preferred_drawer_width_px"] = str(max(320, min(800, drawer_width_px)))
     return metadata
 
 
@@ -219,17 +224,25 @@ def low_risk_card(session_id: str, score: int, source_url: str, max_score: int =
     ]}}
 
 
-# ---- 4. bathroom picker (custom, choice_grid) -------------------------------
+# ---- 4. bathroom picker (custom, full-width images) -------------------------
+
+WIDE_DRAWER_PX = 800
+
 
 def bathroom_pick_card(session_id: str, bathrooms: list[dict], parent_name: str = "your parent") -> tuple[str, dict]:
+    # choice_grid tiles were too small to tell the rooms apart and the schema has no size option, so each
+    # bathroom gets a full-width image with its own button; send it with drawer_width_px=WIDE_DRAWER_PX.
+    children = []
+    for i, b in enumerate(bathrooms, 1):
+        children.append({"type": "group", "direction": "column", "gap": 6, "children": [
+            {"type": "heading", "value": f"{i}. {b['label']}", "level": 3},
+            {"type": "image", "src": image_src(b.get("image") or f"assets/bathrooms/{b['id']}.png"),
+             "alt": b["label"], "aspect_ratio": "16:9"},
+            {"type": "button", "label": f"This one: {b['label']}", "primary": i == 1,
+             "action": {"selection": _sel("pick_bathroom", session_id, bathroom_id=b["id"])}},
+        ]})
     return "custom", {"root": {"type": "section", "title": f"Which bathroom looks most like {parent_name}'s?",
-                               "subtitle": "Pick the closest one. It does not need to match exactly.", "children": [
-        {"type": "choice_grid", "name": "bathroom_id", "choices": [
-            {"value": b["id"], "label": b["label"], "image": image_src(b.get("image") or f"assets/bathrooms/{b['id']}.png")} for b in bathrooms
-        ]},
-        {"type": "button", "label": "Use this bathroom", "primary": True,
-         "action": {"selection": _sel("pick_bathroom", session_id)}},
-    ]}}
+                               "subtitle": "Pick the closest one. It does not need to match exactly.", "children": children}}
 
 
 # ---- 5. after image + fixes (detail) ----------------------------------------

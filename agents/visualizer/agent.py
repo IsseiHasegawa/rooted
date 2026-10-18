@@ -29,6 +29,7 @@ async def on_render(ctx: Context, sender: str, req: RenderRequest):
             after_url=urls[1],
             marked_url=urls[2],
             cached=out["cached"],
+            fix_item_ids=out["fix_item_ids"],
         )
     except Exception as exc:
         ctx.logger.error(f"[{req.session_id}] render failed: {type(exc).__name__}")

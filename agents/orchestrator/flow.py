@@ -127,10 +127,11 @@ async def say(ctx: Context, s: dict, text: str) -> None:
     await ctx.send(s["sender"], text_message(text))
 
 
-async def show(ctx: Context, s: dict, narration: str, card: tuple[str, dict], terminal: bool = False) -> None:
+async def show(ctx: Context, s: dict, narration: str, card: tuple[str, dict], terminal: bool = False,
+               drawer_width_px: int | None = None) -> None:
     kind, payload = card
-    s["card"] = {"narration": narration, "kind": kind, "payload": payload, "terminal": terminal}
-    await ctx.send(s["sender"], cards.card_message(narration, kind, payload, terminal=terminal))
+    s["card"] = {"narration": narration, "kind": kind, "payload": payload, "terminal": terminal, "drawer_width_px": drawer_width_px}
+    await ctx.send(s["sender"], cards.card_message(narration, kind, payload, terminal=terminal, drawer_width_px=drawer_width_px))
 
 
 async def resend_card(ctx: Context, s: dict, note: str) -> None:
@@ -138,7 +139,8 @@ async def resend_card(ctx: Context, s: dict, note: str) -> None:
     if not c:
         await say(ctx, s, note)
         return
-    await ctx.send(s["sender"], cards.card_message(f"{note}\n\n{c['narration']}".strip(), c["kind"], c["payload"], terminal=c["terminal"]))
+    await ctx.send(s["sender"], cards.card_message(f"{note}\n\n{c['narration']}".strip(), c["kind"], c["payload"],
+                                                   terminal=c["terminal"], drawer_width_px=c.get("drawer_width_px")))
 
 
 async def call(ctx: Context, s: dict, key: str, msg: Model, reply_type: type[Model], timeout: int) -> Model | None:
@@ -154,6 +156,17 @@ def line_items(item_ids: list[str]) -> list[LineItem]:
                  unit_price_cents=PRICES[i]["unit_price_cents"], structural=PRICES[i]["structural"])
         for i in item_ids if i in PRICES
     ]
+
+
+def marker_order(marked_ids: list[str], hazard_ids: list[str]) -> list[str]:
+    """Fix list for the picture: "Fix n" is marker n, so the image's fixes come first in marker order.
+
+    A hazard fix the picture doesn't show is kept after them, unless the picture already has a fix of the
+    same kind (a shower grab bar stands in for a tub grab bar in a step-in shower).
+    """
+    marked = [f for f in marked_ids if f in PRICES]
+    shown = {PRICES[f]["category"] for f in marked}
+    return marked + [f for f in hazard_ids if f in PRICES and f not in marked and PRICES[f]["category"] not in shown]
 
 
 def fix_list(item_ids: list[str]) -> list[dict]:
@@ -221,7 +234,7 @@ async def on_steadi_2(ctx: Context, s: dict, sel: dict) -> None:
 async def on_continue(ctx: Context, s: dict, sel: dict) -> None:
     name = s["data"]["intake"]["parent_name"]
     await show(ctx, s, "Most falls at home happen in the bathroom, so let's start there.",
-               cards.bathroom_pick_card(s["session_id"], BATHROOMS, name))
+               cards.bathroom_pick_card(s["session_id"], BATHROOMS, name), drawer_width_px=cards.WIDE_DRAWER_PX)
     transition(ctx, s, "PICK_BATHROOM")
 
 
@@ -235,12 +248,14 @@ async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:
     for h in s["data"]["risk"]["hazards"]:
         fix_ids += [f for f in h.get("fix_item_ids", []) if f in PRICES and f not in fix_ids]
     fix_ids = fix_ids or ["grab_bar_tub", "grab_bar_toilet", "night_light"]
-    s["data"].update(bathroom_id=bathroom_id, fix_item_ids=fix_ids)
-    save(ctx, s)
     await say(ctx, s, "Drawing the safer version of this bathroom...")
     render = await call(ctx, s, "visualizer", RenderRequest(session_id=sid, bathroom_id=bathroom_id, fix_item_ids=fix_ids),
                         RenderResult, TIMEOUTS["visualizer"])
     marked = render.marked_url if render and not render.error else f"assets/bathrooms/{bathroom_id}.png"
+    if render and not render.error:
+        fix_ids = marker_order(render.fix_item_ids, fix_ids)
+    s["data"].update(bathroom_id=bathroom_id, fix_item_ids=fix_ids)
+    save(ctx, s)
     urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
     full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
     await show(ctx, s, "The numbers on the picture match the list of fixes.",

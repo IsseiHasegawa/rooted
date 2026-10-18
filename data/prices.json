@@ -34,6 +34,22 @@
       "as_of": "2026-10-17"
     },
     {
+      "id": "grab_bar_shower",
+      "label": "Grab bar in the shower",
+      "category": "grab_bar",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 30000,
+      "low_cents": 20000,
+      "high_cents": 35000,
+      "unit": "per bar installed",
+      "source_url": "https://www.homeadvisor.com/cost/disability-accommodation/grab-bar",
+      "source_note": "HomeAdvisor national average $300 (typical $200-$350), the same per-bar figure as the tub and toilet bars.",
+      "confidence": "medium",
+      "placeholder": false,
+      "as_of": "2026-10-17"
+    },
+    {
       "id": "non_slip_mat",
       "label": "Slip-resistant surface in the tub",
       "category": "non_slip_flooring",
