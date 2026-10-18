@@ -21,10 +21,10 @@ MAX_DEPTH = 8
 STEADI_PATH = ROOT / "data" / "steadi.json"
 STEADI_LABEL = "Based on CDC STEADI"
 
-# Card Playground check #5 decides whether cards can show agent-storage:// images. Until then image refs
-# that are not already absolute are resolved against ROOTED_IMAGE_BASE_URL (https or agent-storage).
+# Card Playground check #5: public https images render, so every card image is a public URL. Relative refs
+# (e.g. "bathrooms/b1.png") resolve against ROOTED_IMAGE_BASE_URL, the visualizer's asset host.
 IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/rooted-lahacks/rooted/main/assets")
-_ABSOLUTE_IMAGE = ("https://", "http://", "agent-storage://", "data:")
+_ABSOLUTE_IMAGE = ("https://", "http://", "data:")
 
 ACTIONS = (
     "submit_intake", "submit_steadi", "continue", "pick_bathroom", "get_quotes", "pick_quote",
@@ -445,15 +445,35 @@ _ACTION_PHRASES: list[tuple[str, str]] = [
 ]
 
 
-def parse_selection(text: str) -> dict | None:
-    """JSON from a direct @mention first, then regex extraction from ASI:One planner prose."""
-    text = (text or "").strip()
-    try:
-        data = json.loads(text)
-        if isinstance(data, dict) and "action" in data:
+def parse_selection(text: str | dict) -> dict | None:
+    """Returns the flat selection dict ({"action": ..., "session_id": ..., ...}) or None.
+
+    Accepted forms, tried in order:
+    1. JSON wrapper {"selection": {...}, "approved": true}, as the Card Playground delivers a CTA result.
+       Extra keys beside "selection" (other than "approved") are merged in, with the selection winning.
+       approved=false means the user dismissed the card without choosing, so it returns None and the
+       orchestrator re-sends the current card.
+    2. Flat JSON {"action": ..., ...} from a direct @mention.
+    3. Prose narrated by the ASI:One planner, parsed with regexes.
+    """
+    data = text if isinstance(text, dict) else None
+    if data is None:
+        text = (text or "").strip()
+        try:
+            data = json.loads(text)
+        except ValueError:
+            data = None
+    if isinstance(data, dict):
+        if isinstance(data.get("selection"), dict):
+            if data.get("approved") is False or str(data.get("approved")).lower() == "false":
+                return None
+            extra = {k: v for k, v in data.items() if k not in ("selection", "approved")}
+            data = {**extra, **data["selection"]}
+        if "action" in data:
             return data
-    except ValueError:
-        pass
+        text = json.dumps(data)
+    elif not isinstance(text, str):
+        return None
     return _parse_prose(text)
 
 

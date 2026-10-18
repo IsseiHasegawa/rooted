@@ -124,7 +124,8 @@ def test_json_without_action_falls_back_to_prose():
 
 def test_image_src_switchable():
     assert image_src("https://x.example/a.png") == "https://x.example/a.png"
-    assert image_src("agent-storage://https://agentverse.ai/v1/storage/abc") == "agent-storage://https://agentverse.ai/v1/storage/abc"
+    assert image_src("http://127.0.0.1:8080/c.png") == "http://127.0.0.1:8080/c.png"
+    assert image_src("data:image/png;base64,AAAA") == "data:image/png;base64,AAAA"
     assert image_src("bathrooms/b1").endswith("/bathrooms/b1.png")
 
 
@@ -146,3 +147,30 @@ def test_dump_samples(tmp_path):
     assert len(paths) == len(SAMPLES)
     for p in paths:
         json.loads(p.read_text())
+
+
+def test_wrapped_cta_selection():
+    sel = cta_selections(*SAMPLES["06_quotes"])[1]
+    wrapped = json.dumps({"selection": sel, "approved": True})
+    assert parse_selection(wrapped) == sel
+    assert parse_selection({"selection": sel, "approved": True}) == sel
+
+
+def test_wrapped_form_submit_with_fields():
+    fields = {"action": "submit_intake", "session_id": SID, "age": 82, "community": "East Los Angeles", "tenure": "owner",
+              "months_owned": 240, "household_size": 1, "annual_income": 38000, "insurance_plan": "sample_ma_plan_a"}
+    assert parse_selection(json.dumps({"selection": fields, "approved": True})) == fields
+    # Field values delivered beside the selection instead of inside it are merged too.
+    beside = {"selection": {"action": "submit_steadi", "session_id": SID, "part": "1"}, "approved": True, "q1_fallen": True}
+    assert parse_selection(json.dumps(beside)) == {"action": "submit_steadi", "session_id": SID, "part": "1", "q1_fallen": True}
+
+
+@pytest.mark.parametrize("approved", [False, "false"])
+def test_wrapped_not_approved_is_no_selection(approved):
+    sel = {"action": "approve", "session_id": SID, "quote_id": "q_mesa_1"}
+    assert parse_selection(json.dumps({"selection": sel, "approved": approved})) is None
+
+
+def test_wrapper_without_approved_flag_still_parses():
+    sel = {"action": "pick_bathroom", "session_id": SID, "bathroom_id": "b2"}
+    assert parse_selection(json.dumps({"selection": sel})) == sel
