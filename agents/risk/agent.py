@@ -34,7 +34,7 @@ async def on_assess(ctx: Context, sender: str, req: AssessRequest):
         hazards = [Hazard(**hazard_fields(h)) for h in top_hazards(matched)]
         result = AssessResult(session_id=req.session_id, score=score, at_risk=at_risk, fell_past_year=fell,
                               hazards=hazards, source_url=STEADI["source_url"])
-        ctx.logger.info(f"[{req.session_id}] assessed: at_risk={at_risk}, {len(hazards)} hazards, concerns mapped by {mapper}")
+        ctx.logger.info(f"[{req.session_id}] assessed: {len(hazards)} hazards, concerns mapped by {mapper}")
     except Exception as exc:  # never leave the orchestrator waiting on a crash
         ctx.logger.error(f"[{req.session_id}] assessment failed: {type(exc).__name__}")
         result = AssessResult(session_id=req.session_id, score=0, at_risk=False, error="assessment_failed")

@@ -96,4 +96,4 @@ def top_hazards(matched_ids: list[str], limit: int = 3) -> list[dict]:
 
 def hazard_fields(h: dict) -> dict:
     return {"id": h["id"], "room": h["room"], "label": h["label"], "fix_item_ids": list(h["fix_item_ids"]),
-            "source_url": HAZARDS["source_url"]}
+            "source_url": h.get("source_url", HAZARDS["source_url"])}

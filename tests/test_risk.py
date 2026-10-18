@@ -65,7 +65,8 @@ def test_legacy_fall_alias():
 
 def test_hazards_have_required_fields():
     for h in HAZARDS["hazards"]:
-        assert {"id", "room", "label", "fix_item_ids"} <= set(h)
+        assert {"id", "room", "label", "fix_item_ids", "source_url", "as_of"} <= set(h)
+        assert h["source_url"].startswith("https://") and h["as_of"]
     assert HAZARDS["source_url"].startswith("https://")
     assert len({h["id"] for h in HAZARDS["hazards"]}) == len(HAZARDS["hazards"])
 

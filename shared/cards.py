@@ -24,7 +24,7 @@ STEADI_LABEL = "Based on CDC STEADI"
 # Card Playground check #5 decides whether cards can show agent-storage:// images. Until then image refs
 # that are not already absolute are resolved against ROOTED_IMAGE_BASE_URL (https or agent-storage).
 IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/rooted-lahacks/rooted/main/assets")
-_ABSOLUTE_IMAGE = ("https://", "agent-storage://")
+_ABSOLUTE_IMAGE = ("https://", "http://", "agent-storage://", "data:")
 
 ACTIONS = (
     "submit_intake", "submit_steadi", "continue", "pick_bathroom", "get_quotes", "pick_quote",
