@@ -96,7 +96,7 @@ def test_every_interactive_card_has_a_cta():
 def test_sources_shown_on_risk_and_funding():
     assert "cdc.gov/steadi" in json.dumps(SAMPLES["03_risk_result"][1])
     funding = json.dumps(SAMPLES["07_funding"][1])
-    assert "nhslacounty.org" in funding and "as of" in funding
+    assert "lacda.org" in funding and "as of" in funding
 
 
 def test_prose_examples():
@@ -185,44 +185,56 @@ def test_wrapper_without_approved_flag_still_parses():
 
 
 FUNDING = {
-    "total_cents": 74_550, "covered_cents": 56_000, "pay_now_cents": 58_550, "family_share_cents": 18_550,
+    "total_cents": 374_550, "covered_cents": 316_000, "pay_now_cents": 58_550, "family_share_cents": 58_550,
+    "pay_now_item_ids": ["grab_bar_tub", "night_light"], "funded_later_item_ids": ["tub_to_shower"],
     "matches": [
-        {"program_id": "sample_ma_plan_a", "name": "Sample plan A", "amount_cents": 16_000, "source_url": "https://x", "as_of": "2026-10-17", "funded_later": False},
-        {"program_id": "nhs", "name": "NHS LA County", "amount_cents": 40_000, "source_url": "https://y", "as_of": "2026-10-17", "funded_later": True},
+        {"program_id": "sample_ma_plan_a", "name": "Sample plan A", "amount_cents": 16_000, "covered_item_ids": ["grab_bar_tub"],
+         "source_url": "https://x", "as_of": "2026-10-17", "funded_later": False},
+        {"program_id": "lacda", "name": "LACDA Senior Grant", "amount_cents": 300_000, "covered_item_ids": ["tub_to_shower"],
+         "source_url": "https://y", "as_of": "2026-10-17", "funded_later": True},
     ],
 }
+LABELS = {"grab_bar_tub": "Grab bar inside the tub", "night_light": "Night light", "tub_to_shower": "Tub to walk-in shower"}
+TODAY = "Today: urgent safety fixes (Grab bar inside the tub, Night light), $585.50 due now, 30% deposit $175.65"
+LATER = "Tub to walk-in shower funded by LACDA Senior Grant (up to $3,000, approval not guaranteed)"
 
 
-def test_funding_summary_due_now_and_deposit():
+def test_funding_summary_two_tracks():
+    from shared.cards import funding_summary
+    m = funding_summary(FUNDING, 30, LABELS)
+    assert m["due_now_cents"] == 58_550 and m["deposit_cents"] == 17_565 and m["balance_cents"] == 40_985
+    assert m["today_items"] == ["Grab bar inside the tub", "Night light"]
+    assert m["grants"] == [{"name": "LACDA Senior Grant", "amount_cents": 300_000, "item_ids": ["tub_to_shower"],
+                            "items": ["Tub to walk-in shower"]}]
+    # pay_now_cents is the source of truth; grants never reduce or join today's payment.
+    assert funding_summary({**FUNDING, "pay_now_cents": 40_000})["deposit_cents"] == 12_000
+    legacy = {k: v for k, v in FUNDING.items() if k != "pay_now_cents"}
+    assert funding_summary(legacy)["due_now_cents"] == 374_550 - 16_000
+
+
+def test_two_track_wording_on_funding_review_split():
+    from shared.cards import funding_card, plan_review_card, split_card
+    funding = json.dumps(funding_card(SID, "q_mesa_1", FUNDING, 30, LABELS)[1])
+    assert TODAY in funding and "After grant approval: " + LATER in funding
+    review = plan_review_card(SID, "q_mesa_1", ["Grab bar"], "Mesa", "2026-10-19", FUNDING, 30, LABELS)[1]
+    rows = {r["label"]: r["value"] for r in review["summary_rows"]}
+    assert rows["Today"] == TODAY and rows["After grant approval"] == LATER
+    for text in (funding, json.dumps(review)):
+        assert "guaranteed approval" not in text.lower() and "will be approved" not in text.lower()
+    split = split_card(SID, "q_mesa_1", FUNDING)[1]
+    assert split["title"].startswith("Split the $175.65 deposit: 30% of $585.50 due now for urgent safety fixes")
+
+
+def test_labels_fall_back_to_readable_ids():
     from shared.cards import funding_summary
     m = funding_summary(FUNDING)
-    assert m["due_now_cents"] == 58_550 and m["deposit_cents"] == 17_565 and m["balance_cents"] == 40_985
-    assert m["grant_cents"] == 40_000 and m["grant_names"] == ["NHS LA County"]
-    assert m["family_after_all_cents"] == 18_550
-    # Without pay_now_cents, due now is total minus benefits paid now; grants never reduce it.
-    legacy = {k: v for k, v in FUNDING.items() if k != "pay_now_cents"}
-    assert funding_summary(legacy)["due_now_cents"] == 58_550
-
-
-def test_money_wording_on_funding_review_split():
-    from shared.cards import funding_card, plan_review_card, split_card
-    texts = {
-        "funding": json.dumps(funding_card(SID, "q_mesa_1", FUNDING)[1]),
-        "review": json.dumps(plan_review_card(SID, "q_mesa_1", ["Grab bar"], "Mesa", "2026-10-19", FUNDING)[1]),
-    }
-    for name, text in texts.items():
-        assert "$585.50" in text and "$175.65" in text, name
-        assert "Grants may reimburse up to $400 after approval (NHS LA County)" in text, name
-        assert "$185.50" in text and "not guaranteed" in text, name
-        assert "guaranteed approval" not in text.lower()
-    split = split_card(SID, "q_mesa_1", FUNDING)[1]
-    assert split["title"] == "Split the $175.65 deposit (30% of $585.50 due now)"
+    assert m["today_items"] == ["Grab bar tub", "Night light"] and m["grants"][0]["items"] == ["Tub to shower"]
 
 
 def test_no_grant_line_without_grants():
     from shared.cards import funding_card
-    only_insurance = {**FUNDING, "matches": FUNDING["matches"][:1], "family_share_cents": 58_550}
-    assert "Grants may reimburse" not in json.dumps(funding_card(SID, "q_mesa_1", only_insurance)[1])
+    only_insurance = {**FUNDING, "matches": FUNDING["matches"][:1], "funded_later_item_ids": []}
+    assert "After grant approval" not in json.dumps(funding_card(SID, "q_mesa_1", only_insurance)[1])
 
 
 def test_funding_result_model_accepted():

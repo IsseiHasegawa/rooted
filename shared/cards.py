@@ -272,66 +272,82 @@ def quotes_carousel_card(session_id: str, quotes: list, image_by_contractor: dic
 
 # ---- 7. funding (custom) ---------------------------------------------------
 
-def funding_summary(funding: Any, deposit_percent: int = 30) -> dict:
-    """Money figures shared by the funding, review and split cards (and the orchestrator's deposit).
+def funding_summary(funding: Any, deposit_percent: int = 30, item_labels: dict[str, str] | None = None) -> dict:
+    """Money figures shared by the funding, review and split cards and the orchestrator's deposit.
 
-    due_now: what the family pays today, i.e. total minus benefits paid now (insurance). Grants
-    (funded_later) may reimburse later, after an application, so they never reduce what is due now.
+    Two tracks. Today: the urgent safety items (pay_now_item_ids), costing pay_now_cents after benefits
+    applied now (insurance); the deposit is a percentage of that. Later: items a grant may fund after
+    its application is approved (funded_later matches); they are never part of today's payment.
     """
     f = _as_dict(funding)
     matches = [_as_dict(m) for m in f.get("matches", [])]
+    labels = item_labels or {}
     total = f.get("total_cents", 0)
     benefits_now = sum(m["amount_cents"] for m in matches if not m.get("funded_later"))
-    grants = [m for m in matches if m.get("funded_later")]
-    grant_cents = sum(m["amount_cents"] for m in grants)
     due_now = f.get("pay_now_cents")
     if due_now is None:
         due_now = max(0, total - benefits_now)
+    later_ids = list(f.get("funded_later_item_ids") or [])
+    grants = []
+    for m in matches:
+        if m.get("funded_later"):
+            ids = list(m.get("covered_item_ids") or later_ids)
+            grants.append({"name": m["name"], "amount_cents": m["amount_cents"],
+                           "item_ids": ids, "items": [item_label(i, labels) for i in ids]})
+    grant_cents = sum(g["amount_cents"] for g in grants)
     family_after_all = f.get("family_share_cents")
     if family_after_all is None:
         family_after_all = max(0, due_now - grant_cents)
     deposit = due_now * deposit_percent // 100
+    today_ids = list(f.get("pay_now_item_ids") or [])
     return {
         "total_cents": total, "benefits_now_cents": benefits_now, "due_now_cents": due_now,
-        "grant_cents": grant_cents, "grant_names": [m["name"] for m in grants],
+        "today_item_ids": today_ids, "today_items": [item_label(i, labels) for i in today_ids],
+        "later_item_ids": later_ids, "grants": grants, "grant_cents": grant_cents,
+        "grant_names": [g["name"] for g in grants],
         "family_after_all_cents": family_after_all, "deposit_percent": deposit_percent,
         "deposit_cents": deposit, "balance_cents": due_now - deposit,
     }
 
 
-def grants_line(summary: dict) -> str:
-    names = " and ".join(summary["grant_names"])
-    return (f"Grants may reimburse up to {usd(summary['grant_cents'])} after approval ({names}). "
-            "Approval is not guaranteed.")
+def item_label(item_id: str, labels: dict[str, str] | None = None) -> str:
+    return (labels or {}).get(item_id) or item_id.replace("_", " ").capitalize()
 
 
-def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
+def today_line(summary: dict) -> str:
+    items = f" ({', '.join(summary['today_items'])})" if summary["today_items"] else ""
+    return (f"Today: urgent safety fixes{items}, {usd(summary['due_now_cents'])} due now, "
+            f"{summary['deposit_percent']}% deposit {usd(summary['deposit_cents'])}")
+
+
+def grant_lines(summary: dict) -> list[str]:
+    return [f"After grant approval: {', '.join(g['items']) or 'the full remodel'} funded by {g['name']} "
+            f"(up to {usd(g['amount_cents'])}, approval not guaranteed)" for g in summary["grants"]]
+
+
+def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30,
+                 item_labels: dict[str, str] | None = None) -> tuple[str, dict]:
     f = _as_dict(funding)
     matches = [_as_dict(m) for m in f.get("matches", [])]
-    m_sum = funding_summary(f, deposit_percent)
+    m_sum = funding_summary(f, deposit_percent, item_labels)
     children: list[dict] = []
     if f.get("chart_url"):
         children.append({"type": "image", "src": image_src(f["chart_url"]), "alt": "Cost waterfall", "aspect_ratio": "16:9"})
     children += [
         {"type": "group", "direction": "row", "gap": 8, "children": [
-            {"type": "badge", "label": f"Total {usd(m_sum['total_cents'])}", "variant": "info"},
             {"type": "badge", "label": f"Due now: {usd(m_sum['due_now_cents'])}", "variant": "warning"},
+            {"type": "badge", "label": f"Deposit {usd(m_sum['deposit_cents'])}", "variant": "info"},
         ]},
-        {"type": "text", "value": f"Deposit today ({deposit_percent}% of due now): {usd(m_sum['deposit_cents'])}", "style": "emphasis"},
+        {"type": "text", "value": today_line(m_sum), "style": "emphasis"},
     ]
-    if m_sum["grant_cents"]:
-        children.append({"type": "text", "value": grants_line(m_sum)})
-    children += [
-        {"type": "text", "value": f"Family share after all programs: {usd(m_sum['family_after_all_cents'])}"
-                                  + (" if the grants are approved" if m_sum["grant_cents"] else "")},
-        {"type": "heading", "value": "Programs that match" if matches else "No program matched", "level": 3},
-    ]
+    children += [{"type": "text", "value": line} for line in grant_lines(m_sum)]
+    children.append({"type": "heading", "value": "Programs that match" if matches else "No program matched", "level": 3})
     if matches:
         children.append({"type": "list", "items": [
             {"children": [
                 {"type": "text", "value": m["name"], "style": "emphasis"},
                 {"type": "badge", "label": f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") else usd(m["amount_cents"]), "variant": "success"},
-                {"type": "badge", "label": "After approval" if m.get("funded_later") else "Applied now", "variant": "warning" if m.get("funded_later") else "info"},
+                {"type": "badge", "label": "After approval" if m.get("funded_later") else "Applied today", "variant": "warning" if m.get("funded_later") else "info"},
                 {"type": "text", "value": m.get("next_step") or "", "style": "body"},
                 {"type": "text", "value": f"Source: {m['source_url']} (as of {m['as_of']})", "style": "muted"},
             ]} for m in matches
@@ -350,25 +366,19 @@ def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: 
 # ---- 8. plan review (review) -----------------------------------------------
 
 def plan_review_card(session_id: str, quote_id: str, items: list[str], contractor_name: str, date: str,
-                     funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
-    m = funding_summary(funding, deposit_percent)
+                     funding: Any, deposit_percent: int = 30, item_labels: dict[str, str] | None = None) -> tuple[str, dict]:
+    m = funding_summary(funding, deposit_percent, item_labels)
     ids = {"quote_id": quote_id}
     rows = [
         {"label": "Fixes", "value": ", ".join(items)},
         {"label": "Contractor", "value": contractor_name},
         {"label": "Install date", "value": date},
-        {"label": "Total", "value": usd(m["total_cents"])},
+        {"label": "Today", "value": today_line(m)},
     ]
     if m["benefits_now_cents"]:
-        rows.append({"label": "Insurance benefit", "value": f"-{usd(m['benefits_now_cents'])}"})
-    rows += [
-        {"label": "Due now", "value": usd(m["due_now_cents"])},
-        {"label": f"Deposit today ({deposit_percent}%)", "value": usd(m["deposit_cents"])},
-        {"label": "Balance", "value": f"{usd(m['balance_cents'])} after the work passes a completion check"},
-    ]
-    if m["grant_cents"]:
-        rows.append({"label": "Grants (after approval)", "value": grants_line(m)})
-    rows.append({"label": "Family share after all programs", "value": usd(m["family_after_all_cents"])})
+        rows.append({"label": "Insurance benefit (applied today)", "value": f"-{usd(m['benefits_now_cents'])}"})
+    rows.append({"label": "Balance for today's fixes", "value": f"{usd(m['balance_cents'])} after the work passes a completion check"})
+    rows += [{"label": "After grant approval", "value": line.removeprefix("After grant approval: ")} for line in grant_lines(m)]
     return "review", {
         "title": "Review the plan",
         "summary_rows": rows,
@@ -399,7 +409,8 @@ def split_card(session_id: str, quote_id: str, funding: Any, deposit_percent: in
     # The form schema has no subtitle, so the money context goes in the title.
     m = funding_summary(funding, deposit_percent)
     return "form", {
-        "title": f"Split the {usd(m['deposit_cents'])} deposit ({deposit_percent}% of {usd(m['due_now_cents'])} due now)",
+        "title": (f"Split the {usd(m['deposit_cents'])} deposit: {deposit_percent}% of {usd(m['due_now_cents'])} "
+                  "due now for urgent safety fixes. Grant-funded work is not part of it."),
         "fields": [
             {"name": "payers", "kind": "number", "label": "How many family members will pay?", "required": True},
             {"name": "split", "kind": "select", "label": "How to split", "required": True,
@@ -609,15 +620,18 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
          "items": fixes, "earliest_date": "2026-10-21", "badges": ["CAPS certified"], "expires_at": "2026-10-24"},
     ]
     funding = {
-        "total_cents": 74_550, "covered_cents": 56_000, "pay_now_cents": 58_550, "family_share_cents": 18_550,
+        "total_cents": 374_550, "covered_cents": 316_000, "pay_now_cents": 58_550, "family_share_cents": 58_550,
+        "pay_now_item_ids": [f["id"] for f in fixes], "funded_later_item_ids": ["tub_to_shower"],
         "chart_url": "assets/charts/waterfall_demo.png",
         "matches": [
             {"program_id": "sample_ma_plan_a", "name": "Sample plan A: home safety benefit (B14c)", "amount_cents": 16_000,
+             "covered_item_ids": ["grab_bar_tub", "grab_bar_toilet"],
              "source_url": "https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf",
              "as_of": "2026-10-17", "next_step": "Sample plan. Call the plan to confirm the benefit.", "funded_later": False},
-            {"program_id": "nhs_la_minor_repair", "name": "NHS LA County Senior Minor Home Repair Grant", "amount_cents": 40_000,
-             "source_url": "https://www.nhslacounty.org/affordable-lending-and-grant-services/senior-home-repair-grants-program-los-angeles/",
-             "as_of": "2026-10-17", "next_step": "Apply online. Includes an occupational therapist home visit.", "funded_later": True},
+            {"program_id": "lacda_senior_grant", "name": "LACDA Senior Grant", "amount_cents": 300_000,
+             "covered_item_ids": ["tub_to_shower"],
+             "source_url": "https://lacda.org/home-improvements/senior-grant-program",
+             "as_of": "2026-10-17", "next_step": "Apply to LACDA. Work starts only after approval.", "funded_later": True},
         ],
     }
     labels = [f["label"] for f in fixes]
