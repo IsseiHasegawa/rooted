@@ -20,17 +20,20 @@ from shared.models import (
     FundingRequest,
     FundingResult,
     LineItem,
+    ProgramAmount,
     Quote,
     QuotedItem,
     QuoteRequest,
     RenderRequest,
     RenderResult,
     RevisedQuote,
+    WaterfallRequest,
+    WaterfallResult,
 )
 from shared.runtime import CONTRACTOR_KEYS, ROOT, address_of, message_text, text_message
 
 DEPOSIT_PERCENT = 30
-TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 20}
+TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 20, "chart": 10}
 
 PRICES = {p["id"]: p for p in json.loads((ROOT / "data" / "prices.json").read_text())["items"]}
 BATHROOMS = [
@@ -309,6 +312,13 @@ async def on_pick_quote(ctx: Context, s: dict, sel: dict) -> None:
     if funding is None or funding.error:
         funding = FundingResult(session_id=sid, total_cents=quote["total_cents"], family_share_cents=quote["total_cents"])
         await say(ctx, s, "I couldn't check funding programs just now, so this shows the full price.")
+    if funding.matches and not funding.chart_url:
+        chart = await call(ctx, s, "visualizer", WaterfallRequest(
+            session_id=sid, total_cents=funding.total_cents, family_share_cents=funding.family_share_cents,
+            program_amounts=[ProgramAmount(name=m.name, amount_cents=m.amount_cents) for m in funding.matches],
+        ), WaterfallResult, TIMEOUTS["chart"])
+        if chart and chart.chart_url and not chart.error:
+            funding.chart_url = chart.chart_url
     s["data"]["funding"] = funding.dict()
     await show(ctx, s, "Here is who can help pay for it.", cards.funding_card(sid, quote["quote_id"], funding))
     transition(ctx, s, "FUNDING")

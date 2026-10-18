@@ -57,6 +57,25 @@ class RenderResult(Model):
     error: str | None = None
 
 
+class ProgramAmount(Model):
+    name: str
+    amount_cents: int
+
+
+# orchestrator -> rooted-visualizer, after FundingResult
+class WaterfallRequest(Model):
+    session_id: str
+    total_cents: int
+    program_amounts: list[ProgramAmount] = []  # in the order the bars are drawn
+    family_share_cents: int
+
+
+class WaterfallResult(Model):
+    session_id: str
+    chart_url: str
+    error: str | None = None
+
+
 # orchestrator -> rooted-funding
 class FundingRequest(Model):
     session_id: str

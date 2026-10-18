@@ -22,3 +22,5 @@ out/
 
 # Legacy seed file (scripts/ensure_seeds.py moves it into .env)
 .seeds.local.json
+assets/cache/
+assets/placeholders/

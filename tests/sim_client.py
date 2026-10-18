@@ -60,7 +60,7 @@ sim = Agent(
 def checks(session_id: str) -> list[tuple[str, str, object, object]]:
     return [
         ("orchestrator", "orchestrator", text_message("My mom lives alone and I'm worried about her bathroom."), ChatMessage),
-        ("risk", "risk", AssessRequest(session_id=session_id, answers={"fell_past_year": True}, concerns="slippery tub"), AssessResult),
+        ("risk", "risk", AssessRequest(session_id=session_id, answers={"q1_fallen": True}, concerns="slippery tub"), AssessResult),
         ("visualizer", "visualizer", RenderRequest(session_id=session_id, bathroom_id="b1", fix_item_ids=[i.id for i in ITEMS]), RenderResult),
         ("funding", "funding", FundingRequest(session_id=session_id, age=82, community="East Los Angeles", tenure="owner", months_owned=240, household_size=1, annual_income=38_000, insurance_plan="sample_ma_plan_a", line_items=ITEMS), FundingResult),
         ("juniper", "juniper", QuoteRequest(session_id=session_id, line_items=ITEMS, zip_code="90022"), Quote),
