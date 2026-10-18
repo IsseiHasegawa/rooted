@@ -434,7 +434,8 @@ async def on_split(ctx: Context, s: dict, sel: dict) -> None:
     p = _plan(s)
     percents = [_int(x) for x in re.findall(r"\d+", str(sel.get("custom_percents") or ""))] if sel.get("split") == "custom" else None
     shares = split_shares(p["deposit"], _int(sel.get("payers"), 1), percents)
-    contacts = [c.strip().lstrip("@") for c in str(sel.get("payer_contacts") or "").split(",") if c.strip()]
+    contacts = [c.strip().lstrip("@") for c in str(sel.get("payer_contacts") or "").split(",") if c.strip().lstrip("@")]
+    contacts = [c[:1].upper() + c[1:] for c in contacts]  # handles are lowercase; the cards show names
     names = ["You"] + [contacts[i] if i < len(contacts) else f"Payer {i + 2}" for i in range(len(shares) - 1)]
     s["data"]["plan_title"] = f"{s['data']['intake']['parent_name']}'s home safety plan"
     s["data"]["split_percents"] = percents if percents and len(percents) == len(shares) and sum(percents) == 100 else None
