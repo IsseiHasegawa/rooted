@@ -471,6 +471,11 @@ def log_non_text(ctx: Context, sender: str, msg: ChatMessage) -> None:
     for c in msg.content:
         kind = getattr(c, "type", type(c).__name__)
         if kind == "text":
+            # ASI:One may turn an attachment into text, so report any link's host (never the link or the words).
+            hosts = sorted({urlparse(u).hostname or "?" for u in re.findall(r"https?://\S+", c.text)})
+            if hosts:
+                ctx.logger.info(f"[{ctx.storage.get(_active_key(sender))}] text from {sender} has {len(c.text)} chars "
+                                f"and links to {hosts}")
             continue
         detail = ""
         if kind == "resource":
