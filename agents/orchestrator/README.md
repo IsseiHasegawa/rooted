@@ -9,11 +9,16 @@ Rooted lowers fall risk for people who are already at high risk by fixing the ho
 
 **Agent address:** `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t`
 
+## How to start
+
+In ASI:One, pick this agent with the "To:" handle picker (search `rooted-orchestrator`). Pasting only an @address may be routed to the personal AI instead. Payments run in Stripe test mode: use test card `4242 4242 4242 4242`, any future expiry and any CVC.
+
 ## Example prompts
 
 - My mom lives alone and I'm worried about her bathroom.
 - Help me make my dad's home safer so he can stay there.
 - Check my 82-year-old mother's fall risk and find help paying for bathroom grab bars.
+- I live in East Los Angeles and want to make my mother's bathroom safer. Who can help pay for it?
 
 ## How it works
 

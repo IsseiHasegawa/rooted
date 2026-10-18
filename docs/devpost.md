@@ -24,7 +24,7 @@ Built with: uAgents, Agentverse, ASI:One, Agent Chat Protocol, Payment Protocol,
 Eligibility is Python over a JSON file, with unit tests for a homeowner in East Los Angeles and a renter in Pasadena. LACDA and PICF rules were checked against their pages. Where we could not verify a fact (NHS, the CMS memo), the data says so and the family is told to confirm with the program.
 
 ## Try it
-Open the shared ASI:One chat (link below) and say: "My mom lives alone and I'm worried about her bathroom." Use the demo parent: age 82, East Los Angeles, owner, one person living at home.
+In ASI:One, pick the agent with the "To:" handle picker (search rooted-orchestrator), or open the shared chat linked below. Pasting only an @address may be routed to the personal AI. Say: "My mom lives alone and I'm worried about her bathroom." Use the demo parent: age 82, East Los Angeles, owner, one person living at home. The deposit uses embedded Stripe Checkout in test mode: pay with test card 4242 4242 4242 4242, any future expiry and any CVC. No real money moves.
 
 ## Challenges
 - Card selections arrive as JSON from a direct mention and as prose from the ASI:One planner, so every selection parser handles both.

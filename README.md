@@ -50,6 +50,13 @@ Funding eligibility is plain Python over `data/programs.json`. No LLM decides wh
 
 Addresses are derived from each agent's seed. TODO: add Agentverse profile URLs and the shared ASI:One chat URL once the agents are registered.
 
+## Try it
+
+1. Open ASI:One and pick the agent with the "To:" handle picker (search `rooted-orchestrator`). Pasting only an @address may be routed to the personal AI.
+2. Say: "My mom lives alone and I'm worried about her bathroom."
+3. Use the demo parent: age 82, East Los Angeles, owner, one person living at home.
+4. The deposit uses embedded Stripe Checkout in test mode. Pay with test card `4242 4242 4242 4242`, any future expiry and any CVC. No real money moves.
+
 ## Run
 
 ```bash
