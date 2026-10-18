@@ -92,8 +92,12 @@ inbox: asyncio.Queue = asyncio.Queue()
 pay_inbox: asyncio.Queue = asyncio.Queue()
 
 
+resources: list = []  # ResourceContent items received (the edited photo)
+
+
 @sim.on_message(ChatMessage)
 async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
+    resources.extend(c for c in msg.content if getattr(c, "type", "") == "resource")
     await inbox.put(msg)
 
 
@@ -278,9 +282,10 @@ async def flow(ctx: Context) -> int:
         if label == "PICK_BATHROOM" and SIM_PHOTO:
             await ctx.send(orch, text_message(f"The user attached an image: {SIM_PHOTO} They say: this is her bathroom"))
             texts2, (kind2, payload2) = await next_card()
-            if kind2 == "detail" and payload2.get("title") == "Your bathroom, made safer":
-                ok = payload2["hero_image"].startswith("data:image/jpeg;base64,")
-                print(f"{'PASS' if ok else 'FAIL'}  {'PHOTO':14s}        {kind2:8s} {payload2['title']} ({len(payload2['hero_image'])} char image)  {' | '.join(texts2)[:60]}")
+            if kind2 == "custom" and payload2["root"].get("title") == "Your bathroom, made safer":
+                uri = resources[-1].resource.uri if resources else ""
+                ok = uri.startswith("agent-storage://") and "image" not in json.dumps(payload2)
+                print(f"{'PASS' if ok else 'FAIL'}  {'PHOTO':14s}        resource {uri.split('/')[0]} then {kind2} card {payload2['root']['title']!r}  {' | '.join(texts2)[:50]}")
                 if not ok:
                     return 1
                 pending = (texts2, (kind2, payload2))  # the RENDER step answers this card

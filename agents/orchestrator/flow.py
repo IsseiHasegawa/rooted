@@ -6,8 +6,12 @@ plus the terminal LOW_RISK / CANCELLED / DECLINED.
 Each state names the card the user is looking at; the matching selection moves to the next state.
 """
 import asyncio
+import base64
 import json
+import os
 import re
+from datetime import datetime, timezone
+from uuid import uuid4
 from typing import Any
 from urllib.parse import urlparse
 
@@ -281,15 +285,44 @@ async def use_photo(ctx: Context, s: dict) -> None:
         ctx.logger.info(f"[{sid}] photo path failed ({render.error if render else 'timeout'}), showing the picker")
         await show_picker(ctx, s, PHOTO_FAILED)
         return
+    # ASI:One drops a card whose image is a data: URI, so the edited photo goes to Agentverse storage and is sent
+    # as its own resource message (the image-generation example's pattern), then the fix list without an image.
+    try:
+        jpeg = base64.b64decode(render.marked_url.split(",", 1)[1])
+        resource = await asyncio.to_thread(upload_photo, sid, jpeg, s["sender"])
+    except Exception as exc:
+        s["data"].pop("photo_url", None)
+        save(ctx, s)
+        ctx.logger.error(f"[{sid}] photo upload failed: {type(exc).__name__}, showing the picker")
+        await show_picker(ctx, s, PHOTO_FAILED)
+        return
     # No markers on a real photo, so the list keeps the line-item order.
-    s["data"].update(bathroom_id="photo", fix_item_ids=fix_ids, photo_after=render.marked_url)
+    s["data"].update(bathroom_id="photo", fix_item_ids=fix_ids)
     save(ctx, s)
+    await say(ctx, s, "Here is your bathroom with these fixes.")
+    await ctx.send(s["sender"], resource)
     urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
     full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
-    await show(ctx, s, "Here is your bathroom with these fixes.",
-               cards.after_detail_card(sid, "photo", render.marked_url, fix_list(fix_ids), urgent, full,
-                                       title="Your bathroom, made safer"))
+    await show(ctx, s, "These are the fixes in the picture above.",
+               cards.photo_fixes_card(sid, fix_list(fix_ids), urgent, full))
     transition(ctx, s, "RENDER")
+
+
+STORAGE_URL = "https://agentverse.ai/v1/storage"
+
+
+def upload_photo(session_id: str, jpeg: bytes, reader: str) -> ChatMessage:
+    """Store the edited photo for 24 h, readable by this chat's sender only, and wrap it as a resource message."""
+    from uagents_core.contrib.protocols.chat import Resource, ResourceContent
+    from uagents_core.storage import ExternalStorage
+
+    storage = ExternalStorage(api_token=os.environ["AGENTVERSE_API_KEY"], storage_url=STORAGE_URL)
+    asset_id = storage.create_asset(name=f"rooted-{session_id}", content=jpeg, mime_type="image/jpeg", lifetime_hours=24)
+    storage.set_permissions(asset_id=asset_id, agent_address=reader, read=True, write=False)
+    return ChatMessage(timestamp=datetime.now(timezone.utc), msg_id=uuid4(), content=[ResourceContent(
+        type="resource", resource_id=asset_id,
+        resource=Resource(uri=f"agent-storage://{STORAGE_URL}/{asset_id}", metadata={"mime_type": "image/jpeg", "role": "generated-image"}),
+    )])
 
 
 async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:

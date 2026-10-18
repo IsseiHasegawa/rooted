@@ -117,18 +117,43 @@ def test_photo_failure_falls_back_to_the_picker(reply):
     assert any(b["children"][2]["action"]["selection"]["action"] == "pick_bathroom" for b in s["card"]["payload"]["root"]["children"])
 
 
-def test_photo_success_shows_it_without_markers_in_line_item_order():
+def test_photo_success_sends_the_picture_then_the_fix_list():
+    from uagents_core.contrib.protocols.chat import ResourceContent
     ctx = Ctx()
     s = photo_session(ctx)
-    ok = RenderResult(session_id="s-photo", bathroom_id="photo", before_url="", after_url="data:image/jpeg;base64,AA",
-                      marked_url="data:image/jpeg;base64,AA", fix_item_ids=["non_slip_mat", "night_light", "grab_bar_tub"])
-    with mock.patch.object(flow, "call", mock.AsyncMock(return_value=ok)):
+    ok = RenderResult(session_id="s-photo", bathroom_id="photo", before_url="", after_url="data:image/jpeg;base64,AAAA",
+                      marked_url="data:image/jpeg;base64,AAAA", fix_item_ids=["non_slip_mat", "night_light", "grab_bar_tub"])
+    resource = flow.ChatMessage(timestamp=flow.datetime.now(flow.timezone.utc), msg_id=flow.uuid4(), content=[ResourceContent(
+        type="resource", resource_id=flow.uuid4(), resource={"uri": "agent-storage://x/1", "metadata": {"mime_type": "image/jpeg"}})])
+    with mock.patch.object(flow, "call", mock.AsyncMock(return_value=ok)), \
+         mock.patch.object(flow, "upload_photo", return_value=resource) as upload:
+        asyncio.run(flow.use_photo(ctx, s))
+    assert upload.call_args.args[1] == b"\x00\x00\x00" and upload.call_args.args[2] == "agent1user"  # readable by this chat only
+    assert ctx.sent[-2] is resource  # the picture as its own message, just before the card
+    s = flow.load(ctx, "s-photo")
+    card = s["card"]["payload"]["root"]
+    assert s["state"] == "RENDER" and card["title"] == "Your bathroom, made safer"
+    assert "image" not in json_dump(card)
+    assert [i["children"][0]["value"] for i in card["children"][0]["items"]] == [
+        f"Fix {n}: {flow.PRICES[i]['label']}" for n, i in enumerate(("non_slip_mat", "night_light", "grab_bar_tub"), 1)]
+    assert card["children"][-1]["action"]["selection"]["action"] == "get_quotes"
+
+
+def test_upload_failure_falls_back_to_the_picker():
+    ctx = Ctx()
+    s = photo_session(ctx)
+    ok = RenderResult(session_id="s-photo", bathroom_id="photo", before_url="", after_url="data:image/jpeg;base64,AAAA",
+                      marked_url="data:image/jpeg;base64,AAAA")
+    with mock.patch.object(flow, "call", mock.AsyncMock(return_value=ok)), \
+         mock.patch.object(flow, "upload_photo", side_effect=RuntimeError("Asset creation failed: 500")):
         asyncio.run(flow.use_photo(ctx, s))
     s = flow.load(ctx, "s-photo")
-    card = s["card"]["payload"]
-    assert s["state"] == "RENDER" and card["title"] == "Your bathroom, made safer"
-    assert card["hero_image"] == "data:image/jpeg;base64,AA"
-    assert [r["value"] for r in card["summary_rows"]] == [flow.PRICES[i]["label"] for i in ("non_slip_mat", "night_light", "grab_bar_tub")]
+    assert s["state"] == "PICK_BATHROOM" and s["card"]["narration"] == flow.PHOTO_FAILED
+
+
+def json_dump(obj) -> str:
+    import json
+    return json.dumps(obj)
 
 
 def test_preset_after_card_says_it_is_a_similar_bathroom():

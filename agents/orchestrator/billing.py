@@ -293,7 +293,9 @@ async def complete(ctx: Context, s: dict) -> None:
     for p, amount in zip(payers, shares):
         p["charges"]["balance"] = {"amount_cents": amount, "paid": False}
     booking = s["data"].get("booking", {})
-    photo = s["data"].get("photo_after") or f"assets/fallback/{s['data'].get('bathroom_id', 'b1')}/after.png"
+    # The family's own photo is not public, so its completion card has no picture.
+    bid = s["data"].get("bathroom_id", "b1")
+    photo = None if bid == "photo" else f"assets/fallback/{bid}/after.png"
     even_pair = len(payers) == 2 and not s["data"].get("split_percents")
     await flow.show(ctx, s, "The work is done and passed the completion check.",
                     cards.completion_card(sid, booking.get("booking_id", ""), photo, m["balance_cents"],

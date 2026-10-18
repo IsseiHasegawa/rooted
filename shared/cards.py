@@ -272,6 +272,23 @@ def after_detail_card(session_id: str, bathroom_id: str, marked_url: str, fixes:
     }
 
 
+def photo_fixes_card(session_id: str, fixes: list, urgent_estimate_cents: int | None = None,
+                     full_estimate_cents: int | None = None) -> tuple[str, dict]:
+    """The after card for the family's own photo: the picture is sent just before as a resource message,
+    so this card has no image. Same scope choice and selection as after_detail_card."""
+    fixes = [_as_dict(f) for f in fixes]
+    about = lambda c, fallback: f"about {usd(c)}" if c else fallback  # noqa: E731
+    return "custom", {"root": {"type": "section", "title": "Your bathroom, made safer", "children": [
+        {"type": "list", "items": [{"children": [{"type": "text", "value": f"Fix {i}: {f['label']}"}]} for i, f in enumerate(fixes, 1)]},
+        {"type": "input", "name": "scope", "kind": "select", "label": "What should contractors quote?", "required": True, "options": [
+            {"value": "urgent", "label": f"Urgent safety fixes only ({about(urgent_estimate_cents, 'fastest')})"},
+            {"value": "full", "label": f"Full bathroom remodel too ({about(full_estimate_cents, 'tub to walk-in shower')})"},
+        ]},
+        {"type": "button", "label": "Get 3 quotes", "primary": True,
+         "action": {"selection": _sel("get_quotes", session_id, bathroom_id="photo", fix_item_ids=",".join(f["id"] for f in fixes))}},
+    ]}}
+
+
 # ---- 6. quotes (custom) ----------------------------------------------------
 
 def quotes_card(session_id: str, quotes: list, image_by_contractor: dict[str, str] | None = None) -> tuple[str, dict]:
@@ -611,8 +628,8 @@ def completion_card(session_id: str, booking_id: str, photo_url: str, balance_ce
     if pending_names and your_share_cents is not None:
         pending = "; ".join(f"{n}'s {share_word} is pending" for n in pending_names)
         text += f" Your {share_word}: {usd(your_share_cents)}; {pending}."
-    return "custom", {"root": {"type": "section", "title": "Work completed", "subtitle": f"Booking {booking_id}", "children": [
-        {"type": "image", "src": image_src(photo_url), "alt": "Finished bathroom", "aspect_ratio": "16:9"},
+    image = [{"type": "image", "src": image_src(photo_url), "alt": "Finished bathroom", "aspect_ratio": "16:9"}] if photo_url else []
+    return "custom", {"root": {"type": "section", "title": "Work completed", "subtitle": f"Booking {booking_id}", "children": image + [
         {"type": "badge", "label": "Completion check passed", "variant": "success"},
         {"type": "text", "value": text},
     ]}}
