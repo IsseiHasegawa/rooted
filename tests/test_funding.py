@@ -75,3 +75,13 @@ def test_all_records_have_source_and_date():
         assert p["source_url"] and p["as_of"]
         if p["kind"] == "insurance":
             assert p["sample"] is True and "SAMPLE" in p["name"]
+
+
+def test_altadena_eligible_and_incorporated_pasadena_not():
+    assert "lacda_senior_grant" in ids(allocate(req(community="Altadena")))
+    assert "lacda_senior_grant" not in ids(allocate(req(community="Pasadena")))
+
+
+def test_household_of_five_uses_published_limit():
+    assert "lacda_senior_grant" in ids(allocate(req(household_size=5, annual_income=140_000)))
+    assert "lacda_senior_grant" not in ids(allocate(req(household_size=5, annual_income=150_000)))

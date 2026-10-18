@@ -18,7 +18,7 @@ def _norm(s: str) -> str:
 
 def _income_limit_usd(data: dict, household_size: int) -> int:
     table = data["lacda_income_limits_80_ami"]["by_household_size_usd"]
-    return table[str(min(max(household_size, 1), 4))]
+    return table[str(min(max(household_size, 1), 8))]
 
 
 def _in_eligible_district(program: dict, community: str) -> bool:
