@@ -586,7 +586,8 @@ _CONTRACTORS = ("juniper", "mesa", "arbor")
 # Prose phrasings the planner may use instead of the raw action name; checked in order.
 _ACTION_PHRASES: list[tuple[str, str]] = [
     ("submit_intake", r"submit_intake|intake"),
-    ("submit_steadi", r"submit_steadi|steadi|fall[- ]risk (check|questions)"),
+    # Not a bare "steadi": the planner names the CDC STEADI check on later cards too. Question ids only come from the form.
+    ("submit_steadi", r"submit_steadi|fall[- ]risk (check|questions)|\bq\d{1,2}_[a-z]"),
     ("submit_split", r"submit_split|split"),
     ("pick_bathroom", r"pick_bathroom|bathroom_id|\bbathroom b\d+"),
     ("get_quotes", r"get_quotes|get (3 |three )?quotes"),
@@ -601,7 +602,7 @@ _ACTION_PHRASES: list[tuple[str, str]] = [
 ]
 
 
-def parse_selection(text: str | dict) -> dict | None:
+def parse_selection(text: str | dict, allowed: set[str] | None = None) -> dict | None:
     """Returns the flat selection dict ({"action": ..., "session_id": ..., ...}) or None.
 
     Accepted forms, tried in order:
@@ -610,7 +611,8 @@ def parse_selection(text: str | dict) -> dict | None:
        approved=false means the user dismissed the card without choosing, so it returns None and the
        orchestrator re-sends the current card.
     2. Flat JSON {"action": ..., ...} from a direct @mention.
-    3. Prose narrated by the ASI:One planner, parsed with regexes.
+    3. Prose narrated by the ASI:One planner, parsed with regexes. Prose often names more than one action
+       (the planner repeats card text), so the actions in `allowed` (the current card's) are tried first.
     """
     data = text if isinstance(text, dict) else None
     if data is None:
@@ -630,13 +632,17 @@ def parse_selection(text: str | dict) -> dict | None:
         text = json.dumps(data)
     elif not isinstance(text, str):
         return None
-    return _parse_prose(text)
+    return _parse_prose(text, allowed)
 
 
-def _parse_prose(text: str) -> dict | None:
+def _match_action(lowered: str, actions) -> str | None:
+    action = next((a for a in ACTIONS if a in actions and "_" in a and re.search(rf"\b{a}\b", lowered)), None)
+    return action or next((a for a, pattern in _ACTION_PHRASES if a in actions and re.search(pattern, lowered)), None)
+
+
+def _parse_prose(text: str, allowed: set[str] | None = None) -> dict | None:
     lowered = text.lower()
-    action = next((a for a in ACTIONS if "_" in a and re.search(rf"\b{a}\b", lowered)), None)
-    action = action or next((a for a, pattern in _ACTION_PHRASES if re.search(pattern, lowered)), None)
+    action = (_match_action(lowered, allowed) if allowed else None) or _match_action(lowered, ACTIONS)
     if not action:
         return None
     sel: dict[str, Any] = {"action": action}

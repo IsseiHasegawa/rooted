@@ -108,9 +108,9 @@ def _flatten(sel: dict) -> dict:
     return sel
 
 
-def parse(text: str) -> dict | None:
+def parse(text: str, allowed: set[str] | None = None) -> dict | None:
     # cards.parse_selection unwraps {"selection": ..., "approved": ...} and returns None when approved is false.
-    sel = cards.parse_selection(text)
+    sel = cards.parse_selection(text, allowed)
     return _flatten(sel) if sel else None
 
 
@@ -477,8 +477,11 @@ async def _handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
         await billing.on_owner_text(ctx, s, sender, text)
         return
     expected = EXPECTED.get(s["state"], set())
+    sel = parse(text, expected)  # now that the card is known, its own actions win in planner prose
     if not sel or sel.get("action") not in expected:
-        ctx.logger.info(f"[{s['session_id']}] {s['state']}: unparseable or unexpected selection, re-sending card")
+        # Never the raw text: it can carry income or health answers.
+        ctx.logger.info(f"[{s['session_id']}] {s['state']}: unexpected selection (parsed action={(sel or {}).get('action')}, "
+                        f"json={text.lstrip().startswith('{')}, {len(text)} chars), re-sending card")
         await resend_card(ctx, s, "I didn't catch that. Please use the card below.")
         return
     await HANDLERS[s["state"]](ctx, s, sel)

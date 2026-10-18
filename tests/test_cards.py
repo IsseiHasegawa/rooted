@@ -118,6 +118,46 @@ def test_form_values_from_prose():
     assert intake["annual_income"] == 38_000 and intake["zip_code"] == "90022" and intake["insurance_plan"] == "sample_ma_plan_a"
 
 
+RISK_RESULT_PROSE = (f"The user pressed \"Find the fixes\" on the CDC STEADI fall-risk check result for session {SID} "
+                     "(hazard_ids bath_slippery_tub,path_dark_bed_to_bath).")
+
+
+def test_find_the_fixes_is_not_read_as_a_steadi_submission():
+    # Regression: the bare word "steadi" in planner prose used to win over "continue".
+    assert parse_selection(RISK_RESULT_PROSE, {"continue"})["action"] == "continue"
+    assert parse_selection("The user clicked continue on the STEADI result card")["action"] == "continue"
+
+
+def test_current_card_actions_win_in_prose():
+    # Planner prose repeating earlier card text: the action the current card offers is chosen.
+    text = "After the fall-risk check, the user approved the plan."
+    assert parse_selection(text)["action"] == "submit_steadi"
+    assert parse_selection(text, {"approve", "cancel"})["action"] == "approve"
+    # Nothing allowed matches: the general parse still answers, so the orchestrator can re-send the card.
+    assert parse_selection("They approved the plan", {"continue"})["action"] == "approve"
+    # JSON keeps its explicit action whatever the card.
+    assert parse_selection('{"action": "submit_steadi"}', {"continue"})["action"] == "submit_steadi"
+
+
+def test_orchestrator_advances_from_risk_result_on_planner_prose():
+    import asyncio
+    from types import SimpleNamespace
+    from unittest import mock
+
+    from agents.orchestrator import flow
+    from shared.runtime import text_message
+
+    store = {}
+    ctx = SimpleNamespace(storage=SimpleNamespace(get=store.get, set=store.__setitem__),
+                          logger=mock.Mock(), send=mock.AsyncMock(), session="unused")
+    s = {"session_id": SID, "sender": "agent1user", "state": "RISK_RESULT", "card": None,
+         "data": {"intake": {"parent_name": "Maria"}, "risk": {"hazards": []}}}
+    flow.save(ctx, s)
+    store[flow._active_key("agent1user")] = SID
+    asyncio.run(flow.handle_chat(ctx, "agent1user", text_message(RISK_RESULT_PROSE)))
+    assert flow.load(ctx, SID)["state"] == "PICK_BATHROOM"
+
+
 def test_json_without_action_falls_back_to_prose():
     assert parse_selection('{"bathroom_id": "b2"}') is None or parse_selection('{"bathroom_id": "b2"}')["action"] == "pick_bathroom"
 
