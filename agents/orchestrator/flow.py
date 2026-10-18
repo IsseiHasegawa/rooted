@@ -13,7 +13,7 @@ from typing import Any
 from uagents import Context, Model
 from uagents_core.contrib.protocols.chat import ChatMessage
 
-from shared import cards
+from shared import cards, demo
 from shared.models import (
     AssessRequest,
     AssessResult,
@@ -164,11 +164,13 @@ def fix_list(item_ids: list[str]) -> list[dict]:
 
 async def start(ctx: Context, s: dict) -> None:
     await show(ctx, s, "Hi, I'm Rooted. I help families make an older parent's home safer so they can keep living there. "
-                       "First, a few questions about your parent.", cards.intake_card(s["session_id"]))
+                       "First, a few questions about your parent.",
+               cards.intake_card(s["session_id"], defaults=demo.MARIA_INTAKE if demo.DEMO_MODE else None))
     transition(ctx, s, "INTAKE")
 
 
 async def on_intake(ctx: Context, s: dict, sel: dict) -> None:
+    sel = demo.with_defaults(sel, demo.MARIA_INTAKE)
     s["data"]["intake"] = {
         "parent_name": str(sel.get("parent_name") or "your parent").strip() or "your parent",
         "age": _int(sel.get("age")),
@@ -387,7 +389,9 @@ async def on_consent(ctx: Context, s: dict, sel: dict) -> None:
         transition(ctx, s, "DECLINED")
         return
     p = _plan(s)
-    await show(ctx, s, "Last step: who pays the deposit?", cards.split_card(s["session_id"], p["quote"]["quote_id"], s["data"]["funding"], DEPOSIT_PERCENT))
+    await show(ctx, s, "Last step: who pays the deposit?", cards.split_card(
+        s["session_id"], p["quote"]["quote_id"], s["data"]["funding"], DEPOSIT_PERCENT,
+        defaults=demo.DEMO_SPLIT if demo.DEMO_MODE else None))
     transition(ctx, s, "SPLIT")
 
 
@@ -404,6 +408,7 @@ def split_shares(deposit_cents: int, payers: int, percents: list[int] | None = N
 
 
 async def on_split(ctx: Context, s: dict, sel: dict) -> None:
+    sel = demo.with_defaults(sel, demo.DEMO_SPLIT)
     p = _plan(s)
     percents = [_int(x) for x in re.findall(r"\d+", str(sel.get("custom_percents") or ""))] if sel.get("split") == "custom" else None
     shares = split_shares(p["deposit"], _int(sel.get("payers"), 1), percents)
@@ -433,7 +438,26 @@ HANDLERS = {
 
 # ---- entry point -----------------------------------------------------------
 
+FALLBACK_TEXT = "Sorry, something went wrong on my side. Please try that again, or say \"start over\"."
+
+
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
+    try:
+        await _handle_chat(ctx, sender, msg)
+    except Exception as exc:  # a crash must still leave the family with a reply and the card they were on
+        ctx.logger.error(f"[{ctx.storage.get(_active_key(sender))}] chat handler failed: {type(exc).__name__}")
+        active = ctx.storage.get(_active_key(sender))
+        s = load(ctx, active) if active else None
+        try:
+            if s is not None and s.get("card") and s["state"] not in TERMINAL:
+                await resend_card(ctx, s, FALLBACK_TEXT)
+            else:
+                await ctx.send(sender, text_message(FALLBACK_TEXT))
+        except Exception as exc2:
+            ctx.logger.error(f"fallback reply failed: {type(exc2).__name__}")
+
+
+async def _handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     from agents.orchestrator import billing
 
     text = message_text(msg)

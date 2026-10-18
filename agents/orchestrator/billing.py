@@ -172,7 +172,12 @@ def protocol() -> Protocol:
 
     @proto.on_message(CommitPayment)
     async def _commit(ctx: Context, sender: str, msg: CommitPayment):
-        await on_commit(ctx, sender, msg)
+        try:
+            await on_commit(ctx, sender, msg)
+        except Exception as exc:  # the payment drawer must never hang without an answer
+            ctx.logger.error(f"CommitPayment {msg.transaction_id} failed: {type(exc).__name__}")
+            await ctx.send(sender, CancelPayment(transaction_id=msg.transaction_id,
+                                                 reason="Sorry, I couldn't confirm the payment. Please press Pay again in a minute."))
 
     @proto.on_message(RejectPayment)
     async def _reject(ctx: Context, sender: str, msg: RejectPayment):

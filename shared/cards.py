@@ -128,10 +128,27 @@ def load_steadi() -> dict:
 
 # ---- 1. intake (form) ------------------------------------------------------
 
-def intake_card(session_id: str, insurance_options: list[dict] | None = None) -> tuple[str, dict]:
+def _prefilled(fields: list[dict], defaults: dict | None) -> list[dict]:
+    """Demo mode: no field is required, each shows its default, and a select lists its default first.
+    The form schema has no initial value, so the orchestrator fills blanks from the same defaults."""
+    if not defaults:
+        return fields
+    out = []
+    for f in fields:
+        f = {**f, "required": False}
+        d = defaults.get(f["name"])
+        if d is not None and f["kind"] == "select":
+            f["options"] = sorted(f["options"], key=lambda o: o["value"] != d)
+        elif d is not None:
+            f["placeholder"] = str(d)
+        out.append(f)
+    return out
+
+
+def intake_card(session_id: str, insurance_options: list[dict] | None = None, defaults: dict | None = None) -> tuple[str, dict]:
     return "form", {
-        "title": "About your parent",
-        "fields": [
+        "title": "About your parent" + (" (demo: blank fields use Maria's profile)" if defaults else ""),
+        "fields": _prefilled([
             {"name": "parent_name", "kind": "text", "label": "Parent's first name", "required": True, "placeholder": "Maria"},
             {"name": "age", "kind": "number", "label": "Age", "required": True},
             {"name": "community", "kind": "text", "label": "City or community", "required": True, "placeholder": "East Los Angeles"},
@@ -144,7 +161,7 @@ def intake_card(session_id: str, insurance_options: list[dict] | None = None) ->
             {"name": "insurance_plan", "kind": "select", "label": "Health plan", "required": True,
              "options": insurance_options or INSURANCE_OPTIONS},
             {"name": "concern", "kind": "text", "label": "What worries you most at home?", "placeholder": "Slippery tub, dark hallway at night"},
-        ],
+        ], defaults),
         "submit_cta": {"label": "Continue", "selection": _sel("submit_intake", session_id)},
     }
 
@@ -470,19 +487,20 @@ def consent_card(session_id: str, quote_id: str, parent_name: str, items: list[s
 
 # ---- 10. family split (form) -----------------------------------------------
 
-def split_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30) -> tuple[str, dict]:
+def split_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30,
+               defaults: dict | None = None) -> tuple[str, dict]:
     # The form schema has no subtitle, so the money context goes in the title.
     m = funding_summary(funding, deposit_percent)
     return "form", {
         "title": (f"Split the {usd(m['deposit_cents'])} deposit: {deposit_percent}% of {usd(m['due_now_cents'])} "
                   "due now for urgent safety fixes. Grant-funded work is not part of it."),
-        "fields": [
+        "fields": _prefilled([
             {"name": "payers", "kind": "number", "label": "How many family members will pay?", "required": True},
             {"name": "split", "kind": "select", "label": "How to split", "required": True,
              "options": [{"value": "even", "label": "Evenly"}, {"value": "custom", "label": "Custom percentages"}]},
             {"name": "custom_percents", "kind": "text", "label": "Custom percentages, in payer order", "placeholder": "50, 25, 25"},
             {"name": "payer_contacts", "kind": "text", "label": "Other payers (ASI:One handles, comma separated)", "placeholder": "@leo, @ana"},
-        ],
+        ], defaults),
         "submit_cta": {"label": "Send payment requests", "selection": _sel("submit_split", session_id, quote_id=quote_id)},
     }
 

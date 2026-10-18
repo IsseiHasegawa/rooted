@@ -304,3 +304,28 @@ def test_pending_share_wording_promises_nothing_unbuilt():
     for text in (status, booking):
         assert line in text and "message Rooted" not in text
     assert '"Paid"' not in status
+
+
+def test_demo_defaults_make_intake_optional_and_list_the_default_first():
+    from shared import demo
+    from shared.cards import intake_card, split_card
+
+    _, form = intake_card(SID, defaults=demo.MARIA_INTAKE)
+    fields = {f["name"]: f for f in form["fields"]}
+    assert not any(f.get("required") for f in form["fields"])
+    assert fields["insurance_plan"]["options"][0]["value"] == "sample_ma_plan_a"
+    assert fields["zip_code"]["placeholder"] == "90022"
+    _, split = split_card(SID, "q_arbor_1", FUNDING, defaults=demo.DEMO_SPLIT)
+    assert split["fields"][1]["options"][0]["value"] == "even"
+    # Without defaults the cards are unchanged.
+    assert all(f.get("required") for f in intake_card(SID)[1]["fields"] if f["name"] in ("age", "zip_code"))
+
+
+def test_demo_with_defaults_fills_only_blanks(monkeypatch):
+    from shared import demo
+
+    monkeypatch.setattr(demo, "DEMO_MODE", True)
+    sel = demo.with_defaults({"action": "submit_intake", "parent_name": "Rosa", "age": ""}, demo.MARIA_INTAKE)
+    assert sel["parent_name"] == "Rosa" and sel["age"] == "82" and sel["insurance_plan"] == "sample_ma_plan_a"
+    monkeypatch.setattr(demo, "DEMO_MODE", False)
+    assert demo.with_defaults({"age": ""}, demo.MARIA_INTAKE) == {"age": ""}

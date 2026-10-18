@@ -2,11 +2,13 @@
 
 smoke: sends one request to every agent in parallel and checks each one replies.
 flow:  plays the daughter in one chat session as Maria's family, from INTAKE to SPLIT, clicking each card.
+       SIM_DEMO=1 leaves the intake and split fields blank, for an orchestrator started with DEMO_MODE=1.
+lowrisk: a parent with no STEADI answers ticked must end on the terminal low-risk card.
 pay:   flow, then this chat's deposit share, booking, /complete and its balance share with stubbed Stripe
        (the other payer's share stays pending). Needs the orchestrator started with ROOTED_PAYMENTS=stub.
 Start the agents first (scripts/run_all.py).
 
-Usage: .venv/bin/python tests/sim_client.py [smoke|flow|pay|all]   (default: all = smoke + flow)
+Usage: .venv/bin/python tests/sim_client.py [smoke|flow|lowrisk|pay|all]   (default: all = smoke + flow + lowrisk)
 """
 import asyncio
 import json
@@ -125,6 +127,8 @@ async def main(ctx: Context):
             failed += await smoke(ctx)
         if MODE in ("flow", "all", "pay"):
             failed += await flow(ctx)
+        if MODE in ("lowrisk", "all"):
+            failed += await low_risk(ctx)
         if MODE == "pay" and not failed:
             failed += await pay(ctx)
     except Exception:
@@ -165,6 +169,7 @@ async def smoke(ctx: Context) -> int:
 SIM_SCOPE = os.getenv("SIM_SCOPE", "full")  # urgent | full; default is the scripted demo path
 SIM_PICK = os.getenv("SIM_PICK", "arbor")  # juniper | mesa | arbor; "" picks the first quote
 SIM_CHOICE = os.getenv("SIM_CHOICE", "fix_now")  # fix_now (demo path) | wait_picf (ends on the PICF checklist)
+SIM_DEMO = os.getenv("SIM_DEMO") == "1"  # press the buttons only and let DEMO_MODE fill Maria's profile
 
 MARIA = {
     "parent_name": "Maria", "age": "82", "community": "East Los Angeles", "zip_code": "90022", "tenure": "owner",
@@ -223,7 +228,8 @@ def funding_numbers(payload: dict) -> dict:
         kids = n.get("children") if isinstance(n.get("children"), list) else []
         if kids and kids[0].get("style") == "emphasis" and len(kids) > 1 and kids[1].get("type") == "badge":
             programs.append({"name": kids[0]["value"], "amount": kids[1]["label"]})
-    return {"badges": badges[:3], "programs": programs}
+    chart = next((n["src"] for n in walk(payload) if n.get("type") == "image"), "")
+    return {"badges": badges[:3], "programs": programs, "chart": chart}
 
 
 def pick(payload: dict, action: str) -> dict:
@@ -234,7 +240,7 @@ async def flow(ctx: Context) -> int:
     orch = address_of("orchestrator")
     steps = [
         # (label, expected action on the card shown, how to answer it)
-        ("INTAKE", "submit_intake", lambda p: {**pick(p, "submit_intake"), **MARIA}),
+        ("INTAKE", "submit_intake", lambda p: {**pick(p, "submit_intake"), **({} if SIM_DEMO else MARIA)}),
         ("STEADI_1", "submit_steadi", lambda p: {**pick(p, "submit_steadi"), **{f["name"]: f["name"] in STEADI_YES for f in p["fields"]}}),
         ("STEADI_2", "submit_steadi", lambda p: {**pick(p, "submit_steadi"), **{f["name"]: f["name"] in STEADI_YES for f in p["fields"]}}),
         ("RISK_RESULT", "continue", lambda p: pick(p, "continue")),
@@ -246,7 +252,8 @@ async def flow(ctx: Context) -> int:
                                                      and s.get("choice") == SIM_CHOICE)),
         ("REVIEW", "approve", lambda p: pick(p, "approve")),
         ("CONSENT", "consent", lambda p: pick(p, "consent")),
-        ("SPLIT", "submit_split", lambda p: {**pick(p, "submit_split"), "payers": "2", "split": "even", "payer_contacts": "@leo"}),
+        ("SPLIT", "submit_split", lambda p: {**pick(p, "submit_split"),
+                                             **({} if SIM_DEMO else {"payers": "2", "split": "even", "payer_contacts": "@leo"})}),
     ]
     print("\nflow: Maria, East Los Angeles")
     await ctx.send(orch, text_message("Start over. My mom lives alone and I'm worried about her bathroom."))
@@ -290,9 +297,37 @@ async def flow(ctx: Context) -> int:
             print(f"{'PASS' if ok else 'FAIL'}  {'WAIT_PICF':14s}        {kind:8s} {title}  {' | '.join(texts)[:60]}")
             return 0 if ok else 1
     texts, (kind, payload) = await next_card()
-    print(f"PASS  {'PAY':14s}        {kind:8s} {payload['root'].get('title')}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")
+    title = payload["root"].get("title")
+    if SIM_DEMO and payload["root"].get("subtitle") != "0 of 2 paid":
+        print(f"FAIL  {'PAY':14s} demo defaults should give 2 payers: {payload['root'].get('subtitle')}")
+        return 1
+    print(f"PASS  {'PAY':14s}        {kind:8s} {title}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")
     print("flow reached PAY")
     return 0
+
+
+async def low_risk(ctx: Context) -> int:
+    orch = address_of("orchestrator")
+    print("\nlowrisk: no fall, nothing ticked")
+    await ctx.send(orch, text_message("Start over"))
+    for label, answer in [("INTAKE", lambda p: {**pick(p, "submit_intake"), **MARIA, "parent_name": "Rosa"}),
+                          ("STEADI_1", lambda p: {**pick(p, "submit_steadi"), **{f["name"]: False for f in p["fields"]}}),
+                          ("STEADI_2", lambda p: {**pick(p, "submit_steadi"), **{f["name"]: False for f in p["fields"]}})]:
+        _, (kind, payload) = await next_card()
+        await ctx.send(orch, text_message(json.dumps(answer(payload))))
+        print(f"PASS  {label:14s}        {kind:8s}")
+    texts, (kind, payload) = await next_card()
+    body = json.dumps(payload)
+    ok = "Lower risk" in body and not find_selections(payload)
+    print(f"{'PASS' if ok else 'FAIL'}  {'LOW_RISK':14s}        {kind:8s} {payload.get('root', {}).get('title')}  {' | '.join(texts)[:60]}")
+    if not ok:
+        return 1
+    # The low-risk card is terminal, so any next message starts a new plan.
+    await ctx.send(orch, text_message("thanks"))
+    _, (kind, payload) = await next_card()
+    ok = any(s["action"] == "submit_intake" for s in find_selections(payload))
+    print(f"{'PASS' if ok else 'FAIL'}  {'AFTER_LOW':14s}        {kind:8s} next message restarts at intake")
+    return 0 if ok else 1
 
 
 # ---- pay (stubbed Stripe) --------------------------------------------------

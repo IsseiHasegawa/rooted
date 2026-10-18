@@ -90,8 +90,8 @@ def test_keyword_mapping():
     assert map_concerns_keywords("") == []
 
 
-def _fake_response(content: str):
-    resp = mock.Mock()
+def _fake_response(content: str, status_code: int = 200):
+    resp = mock.Mock(status_code=status_code)
     resp.raise_for_status.return_value = None
     resp.json.return_value = {"choices": [{"message": {"content": content}}]}
     return resp
@@ -106,10 +106,28 @@ def test_llm_mapping_drops_unknown_ids():
     assert body["response_format"]["json_schema"]["strict"] is True
 
 
+@pytest.fixture
+def no_sleep(monkeypatch):
+    monkeypatch.setattr(logic.time, "sleep", lambda s: None)
+
+
 @pytest.mark.parametrize("failure", [requests.Timeout(), requests.ConnectionError()])
-def test_llm_mapping_falls_back_on_network_error(failure):
-    with mock.patch.object(logic.requests, "post", side_effect=failure):
+def test_llm_mapping_falls_back_on_network_error(failure, no_sleep):
+    with mock.patch.object(logic.requests, "post", side_effect=failure) as post:
         assert map_concerns_llm("slippery tub", api_key="test") is None
+    assert post.call_count == logic.LLM_RETRIES + 1
+
+
+def test_llm_mapping_retries_after_server_error(no_sleep):
+    ok = _fake_response(json.dumps({"hazard_ids": ["bath_slippery_tub"]}))
+    with mock.patch.object(logic.requests, "post", side_effect=[_fake_response("", 503), requests.Timeout(), ok]) as post:
+        assert map_concerns_llm("slippery tub", api_key="test") == ["bath_slippery_tub"]
+    assert post.call_count == 3
+
+
+def test_llm_retries_fit_the_orchestrator_timeout():
+    worst = (logic.LLM_RETRIES + 1) * logic.LLM_TIMEOUT_S + sum(logic.LLM_BACKOFF_S * 2 ** i for i in range(logic.LLM_RETRIES))
+    assert worst < 15
 
 
 def test_llm_mapping_falls_back_on_bad_json():

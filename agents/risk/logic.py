@@ -2,6 +2,7 @@
 import json
 import os
 import re
+import time
 from pathlib import Path
 
 import requests
@@ -13,7 +14,10 @@ HAZARD_BY_ID = {h["id"]: h for h in HAZARDS["hazards"]}
 
 ASI_ONE_URL = "https://api.asi1.ai/v1/chat/completions"
 ASI_ONE_MODEL = "asi1-mini"
-LLM_TIMEOUT_S = 10
+# Three tries must finish inside the orchestrator's 15 s risk timeout: 3 x 4 s plus 0.5 s and 1 s of backoff.
+LLM_TIMEOUT_S = 4
+LLM_RETRIES = 2
+LLM_BACKOFF_S = 0.5
 
 # Older callers (and the planner) may use descriptive keys instead of steadi.json ids.
 ANSWER_ALIASES = {"fell_past_year": "q1_fallen", "fallen": "q1_fallen"}
@@ -65,13 +69,22 @@ def map_concerns_llm(concerns: str, api_key: str | None = None) -> list[str] | N
             "properties": {"hazard_ids": {"type": "array", "items": {"type": "string", "enum": ids}}},
         }}},
     }
-    try:
-        resp = requests.post(ASI_ONE_URL, json=body, headers={"Authorization": f"Bearer {api_key}"}, timeout=LLM_TIMEOUT_S)
-        resp.raise_for_status()
-        content = resp.json()["choices"][0]["message"]["content"]
-        found = json.loads(content).get("hazard_ids", [])
-    except (requests.RequestException, KeyError, IndexError, ValueError, TypeError, AttributeError):
-        return None
+    found = None
+    for attempt in range(LLM_RETRIES + 1):
+        if attempt:
+            time.sleep(LLM_BACKOFF_S * 2 ** (attempt - 1))
+        try:
+            resp = requests.post(ASI_ONE_URL, json=body, headers={"Authorization": f"Bearer {api_key}"}, timeout=LLM_TIMEOUT_S)
+            if resp.status_code == 429 or resp.status_code >= 500:
+                continue  # rate limit or outage: worth another try
+            resp.raise_for_status()
+            content = resp.json()["choices"][0]["message"]["content"]
+            found = json.loads(content).get("hazard_ids", [])
+            break
+        except requests.RequestException:
+            continue
+        except (KeyError, IndexError, ValueError, TypeError, AttributeError):
+            return None  # a malformed answer won't improve on retry
     if not isinstance(found, list):
         return None
     return [i for i in dict.fromkeys(found) if i in HAZARD_BY_ID]
