@@ -1,0 +1,93 @@
+# Rooted
+
+![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
+![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
+
+Rooted helps families make an older parent's home safer so they can age in place. The whole flow runs inside an ASI:One chat, using the Agent Chat Protocol and ASI:One Interactive Cards. There is no custom frontend.
+
+## Pitch
+
+A family worried about a parent's bathroom usually faces four separate problems: how risky is it, what would the fix look like, who will do it at a fair price, and who pays. Rooted answers all four in one conversation:
+
+1. A CDC STEADI fall-risk screening (12 questions) for the parent.
+2. A picture of the bathroom after the fixes, with numbered hazard markers.
+3. Three contractor quotes and one negotiation round.
+4. A deterministic check of grants and insurance benefits the parent may qualify for, with the source page for every rule.
+5. A plan the parent consents to, a family payment split, and a 30% Stripe deposit. The final 70% is paid after completion.
+
+Rooted does not replace an occupational therapist. It produces an OT-ready plan, and fall-prevention home modifications are most useful for people at high risk of falling.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    U[ASI:One chat] --> O[rooted-orchestrator]
+    O -->|AssessRequest| R[rooted-risk]
+    O -->|RenderRequest| V[rooted-visualizer]
+    O -->|FundingRequest| F[rooted-funding]
+    O -->|QuoteRequest, CounterOffer, BookRequest| C1[contractor-juniper]
+    O --> C2[contractor-mesa]
+    O --> C3[contractor-arbor]
+    O <-->|Agent Payment Protocol| S[Stripe embedded Checkout]
+    R -.-> A[ASI:One API]
+    V -.-> G[Gemini image model]
+    F -.-> P[(data/programs.json)]
+```
+
+Funding eligibility is plain Python over `data/programs.json`. No LLM decides who qualifies. Contractor requests go out in parallel with a 20 s timeout, and the flow continues with whoever answers.
+
+## Agents
+
+| Agent | Role | Address |
+| --- | --- | --- |
+| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | `agent1qvqcv6dfa5nwsaq8jll6729mu5urd2e5f349qfj6z27qznz9v2v2wn6esqd` |
+| rooted-risk | STEADI scoring and room-by-room hazards | `agent1qde0dvv65e9gl7eff6apypdzz59p78v956et3plvwpamcfgwpjm2xnj7f5x` |
+| rooted-visualizer | After images, hazard markers, cost waterfall chart | `agent1qdy4lckmkyme8n2y934ertq30tmxd4d8m7e4pfq8vulcjgqska7hgdygda4` |
+| rooted-funding | Grant and insurance benefit eligibility | `agent1qgzdppjh8ga6hng8cwgpuvxt4gh5nahw757jp6enr77qy2zpjrkxcvnevpr` |
+| contractor-juniper | Quotes and negotiation (fictional, budget) | `agent1qtgg2ms6z833m942hemksv356u458s36l0rtxgpahhp9yep3zwejqz2xny3` |
+| contractor-mesa | Quotes and negotiation (fictional, fastest) | `agent1qdj37u97wqftp6sprrl0rnem4xqwgsd7yzkdvz7dnr7tjxph7ju3j2l8qyt` |
+| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | `agent1qf396us3gl42yrw3n935fk5h0wwztmern0r8z9mtdm6e86jsv0k456g0phj` |
+
+Addresses are derived from each agent's seed. TODO: add Agentverse profile URLs and the shared ASI:One chat URL once the agents are registered.
+
+## Run
+
+```bash
+python3.11 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+cp .env.example .env          # then fill in the keys listed in the file
+.venv/bin/python scripts/ensure_seeds.py
+.venv/bin/python scripts/run_all.py
+.venv/bin/python scripts/connect_mailboxes.py
+```
+
+- Tests: `.venv/bin/python -m pytest tests -q`
+- Run the flow without ASI:One: `tests/sim_client.py`
+- TODO: document `scripts/demo_reset.py`, the demo script, and the `CONTRACTOR_OFFLINE=mesa` failover demo once P10 lands.
+
+## Data sources
+
+Every program and price record carries `source_url` and `as_of`, and the cards show the source. "Verified" means we read the fact on the source page on the date shown. Dates are 2026-10-17 unless noted.
+
+| Data | Source | Status |
+| --- | --- | --- |
+| Fall-risk questions and scoring | [CDC STEADI Stay Independent](https://www.cdc.gov/steadi/pdf/STEADI-Brochure-StayIndependent-508.pdf) and [STEADI algorithm](https://www.cdc.gov/steadi/media/pdfs/STEADI-Algorithm-508.pdf), as recorded in `data/steadi.json` | Entered by the team from the CDC documents |
+| Home hazards | [CDC Check for Safety](https://www.clemson.edu/cbshs/departments/prtm/_documents/check_for_safety_brochure-a.pdf) (hosted copy), in `data/hazards.json` | Entered by the team |
+| LACDA Senior Grant (age 62+, 80% income table effective 2026-06-01, 12 months owned, districts 1/2/4/5 community lists, $20,000 max) | [LACDA](https://lacda.org/home-improvements/senior-grant-program) | Verified |
+| PICF HUD Older Adults Home Modification (age 62+, LA County, owners and renters, 80% income table, covered examples) | [PICF Individuals and Caregivers](https://www.picf.org/individuals-caregivers/) | Verified. The page states no maximum and no funding period |
+| NHS LA County Senior Minor Home Repair Grant ($5,600, age 62+, homeowner) | [NHS LA County](https://www.nhslacounty.org/affordable-lending-and-grant-services/senior-home-repair-grants-program-los-angeles/) | Unverified. The page blocks our fetcher; facts seen only in search excerpts. No income limit is published |
+| Medicare Advantage supplemental benefit | [CMS memo, April 27, 2018](https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf) | Unverified. The memo's item list was not readable. The plans themselves are SAMPLE plans |
+| Grab bar price | [HomeAdvisor](https://www.homeadvisor.com/cost/disability-accommodation/grab-bar), [Fixr](https://www.fixr.com/costs/grab-bars-installation), [Homewyse](https://www.homewyse.com/costs_1/cost_of_grab_bars.html) | Homewyse range read (national); the others are not re-read |
+| Tub to shower price | [Angi](https://www.angi.com/articles/convert-tub-to-shower.htm), [Angi walk-in](https://www.angi.com/articles/how-much-does-tub-shower-conversion-cost.htm) | Not re-read |
+| Other fix prices (non-slip, lighting, handheld shower, toilet seat, lever handles) | See `data/prices.json` source_url per item | Low confidence national figures. No LA ZIP prices yet |
+
+## Limitations
+
+- Medicare Advantage plans are SAMPLE plans for the demo, not real plans.
+- Contractors are fictional. Their prices come from national market averages, not local bids.
+- Payments run in Stripe test mode.
+- NHS LA County and CMS facts are unverified (see the table). NHS publishes no income limit, so Rooted uses the LACDA table as a labeled proxy.
+- LACDA also requires a single-family home, condominium or townhome. Rooted does not check property type; the plan step reminds the family to confirm with LACDA.
+- Funding results come from public pages and can change. Families must confirm with each program.
+- After images are AI-generated illustrations, and bathroom images come from a small representative set. Image hosting for production is TBD.
+- Rooted is not medical advice. It does not replace an occupational therapist. It produces an OT-ready plan.
