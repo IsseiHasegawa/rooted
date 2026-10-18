@@ -318,10 +318,12 @@ async def on_pick_quote(ctx: Context, s: dict, sel: dict) -> None:
     if funding is None or funding.error:
         funding = FundingResult(session_id=sid, total_cents=quote["total_cents"], family_share_cents=quote["total_cents"])
         await say(ctx, s, "I couldn't check funding programs just now, so this shows the full price.")
-    if funding.matches and not funding.chart_url:
+    # An alternative (PICF) replaces paying now instead of adding to it, so it has no bar or the steps wouldn't add up.
+    stacked = [m for m in funding.matches if not m.alternative_to_pay_now]
+    if stacked and not funding.chart_url:
         chart = await call(ctx, s, "visualizer", WaterfallRequest(
             session_id=sid, total_cents=funding.total_cents, family_share_cents=funding.family_share_cents,
-            program_amounts=[ProgramAmount(name=m.name, amount_cents=m.amount_cents) for m in funding.matches],
+            program_amounts=[ProgramAmount(name=m.name, amount_cents=m.amount_cents) for m in stacked],
         ), WaterfallResult, TIMEOUTS["chart"])
         if chart and chart.chart_url and not chart.error:
             funding.chart_url = chart.chart_url
