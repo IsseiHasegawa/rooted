@@ -97,15 +97,18 @@ def _truthy(v: Any) -> bool:
     return v is True or str(v).strip().lower() in ("true", "yes", "on", "1", "checked")
 
 
-def parse(text: str) -> dict | None:
-    sel = cards.parse_selection(text)
-    if not sel:
-        return None
-    # Forms may return field values next to the selection or nested under one of these keys.
+def _flatten(sel: dict) -> dict:
+    # Forms may nest field values under one of these keys. CTA ids win over field values.
     for nested in ("values", "fields", "form", "form_values", "data"):
         if isinstance(sel.get(nested), dict):
-            sel = {**sel[nested], **{k: v for k, v in sel.items() if k != nested}}
+            sel = {**_flatten(sel[nested]), **{k: v for k, v in sel.items() if k != nested}}
     return sel
+
+
+def parse(text: str) -> dict | None:
+    # cards.parse_selection unwraps {"selection": ..., "approved": ...} and returns None when approved is false.
+    sel = cards.parse_selection(text)
+    return _flatten(sel) if sel else None
 
 
 def _int(v: Any, default: int = 0) -> int:
