@@ -1,0 +1,29 @@
+{
+  "tool": "CDC STEADI Stay Independent: Check Your Risk for Falling",
+  "source_url": "https://www.cdc.gov/steadi/pdf/STEADI-Brochure-StayIndependent-508.pdf",
+  "rule_source_url": "https://www.cdc.gov/steadi/media/pdfs/STEADI-Algorithm-508.pdf",
+  "as_of": "2026-10-17",
+  "brochure_edition": "2023",
+  "attribution": "Developed by the Greater Los Angeles VA Geriatric Research Education Clinical Center and affiliates; validated fall risk self-assessment (Rubenstein et al. J Safety Res; 2011: 42(6)493-499).",
+  "scoring": "Add the points for each Yes answer. No answers score 0.",
+  "at_risk_rule": {
+    "threshold": 4,
+    "fall_question_id": "q1_fallen",
+    "description": "At risk if total >= 4, or if total < 4 but the person fell in the past year."
+  },
+  "max_score": 14,
+  "questions": [
+    {"id": "q1_fallen", "text": "I have fallen in the past year.", "points": 2, "why": "People who have fallen once are likely to fall again."},
+    {"id": "q2_cane_walker", "text": "I use or have been advised to use a cane or walker to get around safely.", "points": 2, "why": "People who have been advised to use a cane or walker may already be more likely to fall."},
+    {"id": "q3_unsteady", "text": "Sometimes I feel unsteady when I am walking.", "points": 1, "why": "Unsteadiness or needing support while walking are signs of poor balance."},
+    {"id": "q4_furniture", "text": "I steady myself by holding onto furniture when walking at home.", "points": 1, "why": "This is also a sign of poor balance."},
+    {"id": "q5_worried", "text": "I am worried about falling.", "points": 1, "why": "People who are worried about falling are more likely to fall."},
+    {"id": "q6_push_up", "text": "I need to push with my hands to stand up from a chair.", "points": 1, "why": "This is a sign of weak leg muscles, a major reason for falling."},
+    {"id": "q7_curb", "text": "I have some trouble stepping up onto a curb.", "points": 1, "why": "This is also a sign of weak leg muscles."},
+    {"id": "q8_rush_toilet", "text": "I often have to rush to the toilet.", "points": 1, "why": "Rushing to the bathroom, especially at night, increases your chance of falling."},
+    {"id": "q9_feet_feeling", "text": "I have lost some feeling in my feet.", "points": 1, "why": "Numbness in your feet can cause stumbles and lead to falls."},
+    {"id": "q10_med_lightheaded", "text": "I take medicine that sometimes makes me feel light-headed or more tired than usual.", "points": 1, "why": "Side effects from medicines can sometimes increase your chance of falling."},
+    {"id": "q11_med_sleep_mood", "text": "I take medicine to help me sleep or improve my mood.", "points": 1, "why": "These medicines can sometimes increase your chance of falling."},
+    {"id": "q12_sad", "text": "I often feel sad or depressed.", "points": 1, "why": "Symptoms of depression, such as not feeling well or feeling slowed down, are linked to falls."}
+  ]
+}
