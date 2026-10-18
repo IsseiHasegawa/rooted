@@ -1,0 +1,10 @@
+uagents==0.25.5
+uagents-core==0.4.9
+python-dotenv
+requests
+stripe
+google-genai
+openai
+Pillow
+matplotlib
+pytest

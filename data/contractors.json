@@ -1,0 +1,30 @@
+{
+  "as_of": "2026-10-17",
+  "note": "Fictional contractors priced from national market rates in data/prices.json. Multipliers are placeholders.",
+  "contractors": [
+    {
+      "id": "juniper",
+      "name": "Juniper Home Repair",
+      "multiplier": 0.9,
+      "lead_days": 5,
+      "badges": ["Lowest price"],
+      "caps_certified": false
+    },
+    {
+      "id": "mesa",
+      "name": "Mesa Handyworks",
+      "multiplier": 1.05,
+      "lead_days": 2,
+      "badges": ["Earliest: 2 days"],
+      "caps_certified": false
+    },
+    {
+      "id": "arbor",
+      "name": "Arbor CAPS Remodeling",
+      "multiplier": 1.2,
+      "lead_days": 4,
+      "badges": ["CAPS certified"],
+      "caps_certified": true
+    }
+  ]
+}

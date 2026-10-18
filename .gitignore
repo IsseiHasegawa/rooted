@@ -1,0 +1,24 @@
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Local agent state
+*_data.json
+agent_storage/
+
+# Local only
+CLAUDE.local.md
+CLAUDE.md
+spikes/
+out/
+.DS_Store
+
+# Legacy seed file (scripts/ensure_seeds.py moves it into .env)
+.seeds.local.json
