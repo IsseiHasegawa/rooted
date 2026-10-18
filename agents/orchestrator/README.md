@@ -7,7 +7,7 @@ Rooted helps families make an older parent's home safer so they can age in place
 
 Rooted lowers fall risk for people who are already at high risk by fixing the home, and it produces a plan an occupational therapist can review. It does not replace an occupational therapist.
 
-**Agent address:** `agent1qvqcv6dfa5nwsaq8jll6729mu5urd2e5f349qfj6z27qznz9v2v2wn6esqd`
+**Agent address:** `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t`
 
 ## Example prompts
 

@@ -5,7 +5,7 @@
 
 Scores the CDC STEADI "Stay Independent" fall-risk screening (12 questions) and lists room-by-room home hazards from the CDC "Check for Safety" checklist, with the fix items that address each hazard. Scoring is plain Python from `data/steadi.json`. Free-text concerns are matched to checklist hazards by ASI:One (asi1-mini, strict schema, known ids only), with a keyword fallback. The LLM never touches the score. At risk means a score of 4 or more, or a score under 4 with a fall in the past year.
 
-**Agent address:** `agent1qde0dvv65e9gl7eff6apypdzz59p78v956et3plvwpamcfgwpjm2xnj7f5x`
+**Agent address:** `agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj`
 
 Rooted talks to this agent through rooted-orchestrator. To start a full screening, chat with rooted-orchestrator.
 

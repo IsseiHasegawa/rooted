@@ -40,13 +40,13 @@ Funding eligibility is plain Python over `data/programs.json`. No LLM decides wh
 
 | Agent | Role | Address |
 | --- | --- | --- |
-| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | `agent1qvqcv6dfa5nwsaq8jll6729mu5urd2e5f349qfj6z27qznz9v2v2wn6esqd` |
-| rooted-risk | STEADI scoring and room-by-room hazards | `agent1qde0dvv65e9gl7eff6apypdzz59p78v956et3plvwpamcfgwpjm2xnj7f5x` |
-| rooted-visualizer | After images, hazard markers, cost waterfall chart | `agent1qdy4lckmkyme8n2y934ertq30tmxd4d8m7e4pfq8vulcjgqska7hgdygda4` |
-| rooted-funding | Grant and insurance benefit eligibility | `agent1qgzdppjh8ga6hng8cwgpuvxt4gh5nahw757jp6enr77qy2zpjrkxcvnevpr` |
-| contractor-juniper | Quotes and negotiation (fictional, budget) | `agent1qtgg2ms6z833m942hemksv356u458s36l0rtxgpahhp9yep3zwejqz2xny3` |
-| contractor-mesa | Quotes and negotiation (fictional, fastest) | `agent1qdj37u97wqftp6sprrl0rnem4xqwgsd7yzkdvz7dnr7tjxph7ju3j2l8qyt` |
-| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | `agent1qf396us3gl42yrw3n935fk5h0wwztmern0r8z9mtdm6e86jsv0k456g0phj` |
+| rooted-orchestrator | Session state, cards, dispatching, Stripe seller | `agent1q28ppzhe7nqw4nge6dxcm3nx5jvrreav5hpjfwqtu663gls22hdusj4dk2t` |
+| rooted-risk | STEADI scoring and room-by-room hazards | `agent1qg22mcxxwxkpvchv7nxpjtgwt76tzme4xwzdxxzzamxksye644w3uz0enkj` |
+| rooted-visualizer | After images, hazard markers, cost waterfall chart | `agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6` |
+| rooted-funding | Grant and insurance benefit eligibility | `agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm` |
+| contractor-juniper | Quotes and negotiation (fictional, budget) | `agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9` |
+| contractor-mesa | Quotes and negotiation (fictional, fastest) | `agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv` |
+| contractor-arbor | Quotes and negotiation (fictional, CAPS certified) | `agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j` |
 
 Addresses are derived from each agent's seed. TODO: add Agentverse profile URLs and the shared ASI:One chat URL once the agents are registered.
 

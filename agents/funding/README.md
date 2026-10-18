@@ -5,7 +5,7 @@
 
 Matches an older adult's situation to home-modification grants and insurance benefits with deterministic Python rules over `data/programs.json`. No LLM decides who qualifies. Every program and result carries its source URL and date. Programs covered: LACDA Senior Grant Program, NHS LA County Senior Minor Home Repair Grant, PICF HUD Older Adults Home Modification Program, and two SAMPLE Medicare Advantage plans with a supplemental safety benefit.
 
-**Agent address:** `agent1qgzdppjh8ga6hng8cwgpuvxt4gh5nahw757jp6enr77qy2zpjrkxcvnevpr`
+**Agent address:** `agent1qgefdhd8yq9cyqp9rzhq5rtg952ktj2m6g4gzu2h2m3ewgmc2hguyx3vmcm`
 
 Rooted talks to this agent through rooted-orchestrator. To start, chat with rooted-orchestrator.
 

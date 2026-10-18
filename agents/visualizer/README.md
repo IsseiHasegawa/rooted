@@ -5,7 +5,7 @@
 
 Renders a before and after image of a bathroom with numbered markers for each safety fix, and the cost waterfall chart (total, covered by each program, family share). Uses a Gemini image model with cached demo images as a fallback, so the flow never waits on image generation.
 
-**Agent address:** `agent1qdy4lckmkyme8n2y934ertq30tmxd4d8m7e4pfq8vulcjgqska7hgdygda4`
+**Agent address:** `agent1qttmvedtz5ccny744wnsmyj0ch9u570u7m59rc8ns64vr4rqclwvvpl5km6`
 
 Rooted talks to this agent through rooted-orchestrator. To start, chat with rooted-orchestrator.
 

@@ -7,9 +7,9 @@ Three fictional home-repair contractors that run from one codebase with differen
 
 | Agent | Style | Price factor | Earliest start | Address |
 | --- | --- | --- | --- | --- |
-| contractor-juniper (Juniper Home Repair) | Lowest price | 0.9x | 5 days | `agent1qtgg2ms6z833m942hemksv356u458s36l0rtxgpahhp9yep3zwejqz2xny3` |
-| contractor-mesa (Mesa Handyworks) | Earliest | 1.05x | 2 days | `agent1qdj37u97wqftp6sprrl0rnem4xqwgsd7yzkdvz7dnr7tjxph7ju3j2l8qyt` |
-| contractor-arbor (Arbor CAPS Remodeling) | CAPS certified | 1.2x | 4 days | `agent1qf396us3gl42yrw3n935fk5h0wwztmern0r8z9mtdm6e86jsv0k456g0phj` |
+| contractor-juniper (Juniper Home Repair) | Lowest price | 0.9x | 5 days | `agent1qg6zuyyej78daddj4gc0s9xv4jy4t2kaa3avmz4ckfrlhhqz35kgv54gxr9` |
+| contractor-mesa (Mesa Handyworks) | Earliest | 1.05x | 2 days | `agent1qv6swmx6s4z0skz0kqedaen9yrmy4jnkngmxd0cs58fayvze6es6cqm4kcv` |
+| contractor-arbor (Arbor CAPS Remodeling) | CAPS certified | 1.2x | 4 days | `agent1q039y2u4v0h9alwqmkhg6p6uf9e4m9mmnel5z3v00pstnve9hngx2evr82j` |
 
 Rooted talks to these agents through rooted-orchestrator. To start, chat with rooted-orchestrator.
 
