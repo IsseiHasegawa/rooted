@@ -356,7 +356,7 @@ async def pay(ctx: Context) -> int:
         await pay_one(ctx, orch, req0, "DEPOSIT", early_commit=True)
         texts, (kind, payload) = await card_titled("Booked")
         body = json.dumps(payload)
-        assert "still pending" in body, "booking card does not mention the pending share"
+        assert "share is pending; Rooted will collect it separately." in body, "booking card does not mention the pending share"
         print(f"PASS  {'BOOKED':14s}        {kind:8s} {payload['root'].get('subtitle')}  {' | '.join(texts)[:70]}")
         try:
             extra = await next_payment(RequestPayment, timeout=2)
@@ -369,7 +369,7 @@ async def pay(ctx: Context) -> int:
         print(f"PASS  {'COMPLETE':14s}        completion card + balance request {req.accepted_funds[0].amount} USD")
         await pay_one(ctx, orch, req, "BALANCE")
         texts = await drain_chat(3)
-        assert any("balance share is paid" in t for t in texts), f"no balance-paid message: {texts}"
+        assert any("balance share is paid" in t and "Rooted will collect it separately" in t for t in texts), f"no balance-paid message: {texts}"
         print("pay reached DONE")
         return 0
     except (AssertionError, asyncio.TimeoutError) as e:

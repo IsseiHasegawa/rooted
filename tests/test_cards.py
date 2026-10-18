@@ -293,3 +293,14 @@ def test_wait_card_is_from_program_record():
     text = json.dumps(payload)
     assert kind == "custom" and "Nothing has been charged" in text and "Request Form" in text
     assert "62 or older" in text and "picf.org" in text and "not guaranteed" in text
+
+
+def test_pending_share_wording_promises_nothing_unbuilt():
+    from shared.cards import booking_card, payment_status_card
+    line = "Leo's share is pending; Rooted will collect it separately."
+    status = json.dumps(payment_status_card(SID, [{"name": "You", "amount_cents": 100, "paid": False},
+                                                  {"name": "Leo", "amount_cents": 100, "paid": False}])[1])
+    booking = json.dumps(booking_card(SID, "bk", "Mesa", "2026-10-19", 100, 200, [{"name": "Leo", "amount_cents": 100}])[1])
+    for text in (status, booking):
+        assert line in text and "message Rooted" not in text
+    assert '"Paid"' not in status

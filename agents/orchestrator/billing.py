@@ -153,7 +153,7 @@ async def on_commit(ctx: Context, sender: str, msg: CommitPayment) -> None:
         await book(ctx, s)  # demo mode: book as soon as this chat's share is paid
         return
     pending = _pending(s, "balance")
-    note = f" {', '.join(p['name'] for p in pending)}'s share is still pending." if pending else ""
+    note = "".join(f" {cards.pending_line(p['name'])}" for p in pending)
     await show_status(ctx, s, "balance", f"Your balance share is paid. Thank you.{note}")
     flow.transition(ctx, s, "DONE")
 

@@ -502,14 +502,18 @@ def stripe_metadata(publishable_key: str, client_secret: str, checkout_session_i
     }
 
 
+def pending_line(name: str) -> str:
+    # Collecting other payers' shares is not built, so promise nothing beyond this.
+    return f"{name}'s share is pending; Rooted will collect it separately."
+
+
 def payment_status_card(session_id: str, payers: list[dict], title: str = "Deposit payments") -> tuple[str, dict]:
     """Informational (terminal): payers = [{name, amount_cents, paid}]; payer 0 is the person in this chat.
 
     Only payer 0 gets a Stripe checkout here; the other shares stay "Pending" and are never shown as paid."""
     paid = sum(1 for p in payers if p.get("paid"))
     others = [p["name"] for p in payers[1:] if not p.get("paid")]
-    note = (f"Your checkout is in this chat. {', '.join(others)} get{'s' if len(others) == 1 else ''} "
-            "a payment request when they message Rooted." if others else "Your checkout is in this chat.")
+    note = " ".join(["Your checkout is in this chat."] + [pending_line(n) for n in others])
     return "custom", {"root": {"type": "section", "title": title,
                                "subtitle": f"{paid} of {len(payers)} paid", "children": [
         {"type": "list", "items": [
@@ -543,8 +547,7 @@ def booking_card(session_id: str, booking_id: str, contractor_name: str, date: s
                 {"type": "text", "value": detail, "style": "muted"},
             ]} for i, (label, detail, variant) in enumerate(steps, 1)
         ]},
-        *[{"type": "text", "value": f"{p['name']}'s {usd(p['amount_cents'])} deposit share is still pending.", "style": "emphasis"}
-          for p in pending],
+        *[{"type": "text", "value": pending_line(p["name"]), "style": "emphasis"} for p in pending],
         {"type": "text", "value": "The plan is ready to share with an occupational therapist.", "style": "muted"},
     ]}}
 
