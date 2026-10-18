@@ -245,17 +245,19 @@ def bathroom_pick_card(session_id: str, bathrooms: list[dict], parent_name: str 
              "action": {"selection": _sel("pick_bathroom", session_id, bathroom_id=b["id"])}},
         ]})
     return "custom", {"root": {"type": "section", "title": f"Which bathroom looks most like {parent_name}'s?",
-                               "subtitle": "Pick the closest one. It does not need to match exactly.", "children": children}}
+                               "subtitle": "Pick the closest one. It does not need to match exactly. "
+                                           "Or attach a photo of the bathroom with the + button.", "children": children}}
 
 
 # ---- 5. after image + fixes (detail) ----------------------------------------
 
 def after_detail_card(session_id: str, bathroom_id: str, marked_url: str, fixes: list,
-                      urgent_estimate_cents: int | None = None, full_estimate_cents: int | None = None) -> tuple[str, dict]:
+                      urgent_estimate_cents: int | None = None, full_estimate_cents: int | None = None,
+                      title: str = "Your bathroom, made safer") -> tuple[str, dict]:
     """fixes: [{id, label}] in marker order; marker numbers on the image follow this order."""
     fixes = [_as_dict(f) for f in fixes]
     return "detail", {
-        "title": "Your bathroom, made safer",
+        "title": title,
         "hero_image": image_src(marked_url),
         "summary_rows": [{"label": f"Fix {i}", "value": f["label"]} for i, f in enumerate(fixes, 1)],
         "sub_options": {"name": "scope", "kind": "radio", "label": "What should contractors quote?", "choices": [

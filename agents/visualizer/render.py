@@ -3,13 +3,17 @@
 Gemini sits behind gemini_edit(); everything else works without it (fallback image, then Pillow placeholder).
 """
 import asyncio
+import base64
 import hashlib
 import io
+import json
 import logging
 import os
 import textwrap
 import time
 from pathlib import Path
+
+import requests
 
 import matplotlib
 
@@ -80,7 +84,7 @@ def draw_markers(src: Path, dst: Path, bathroom_id: str, fix_ids: list[str]) -> 
     im.save(dst)
 
 
-def _gemini_edit_sync(before: Path, fix_ids: list[str], bathroom_id: str = "") -> bytes | None:
+def _gemini_edit_sync(before: Path | Image.Image, fix_ids: list[str], bathroom_id: str = "") -> bytes | None:
     from google import genai
     from google.genai import types
 
@@ -88,7 +92,7 @@ def _gemini_edit_sync(before: Path, fix_ids: list[str], bathroom_id: str = "") -
     prompt = EDIT_PROMPT.format(items=", ".join(catalog.phrase(f, bathroom_id) for f in fix_ids))
     r = client.models.generate_content(
         model=MODEL,
-        contents=[prompt, Image.open(before)],
+        contents=[prompt, before if isinstance(before, Image.Image) else Image.open(before)],
         config=types.GenerateContentConfig(response_modalities=["IMAGE"]),
     )
     for p in (r.candidates[0].content.parts if r.candidates and r.candidates[0].content else []):
@@ -171,6 +175,99 @@ async def render(bathroom_id: str, fix_ids: list[str], session_id: str = "-") ->
     draw_markers(after, marked, bathroom_id, fix_ids)
     log.info("[%s] render %s source=%s %.2fs", session_id, bathroom_id, source, time.monotonic() - t0)
     return {"before": before, "after": after, "marked": marked, "cached": False, "source": source, "fix_item_ids": fix_ids}
+
+
+# ---- the family's own photo ------------------------------------------------
+
+PHOTO_MAX_BYTES = 10 * 1024 * 1024
+PHOTO_DOWNLOAD_TIMEOUT_S = 10
+# A card payload is capped at 64 KB and images must be public https or inline. A user's bathroom can't be
+# committed to the repo like the demo images, so the edited photo goes inline as a small JPEG data URI.
+PHOTO_DATA_URI_MAX = 45_000
+BUDGET_FILE = ROOT / "out" / "gemini_budget.json"
+GEMINI_CALL_CAP = int(os.getenv("GEMINI_CALL_CAP", "25"))
+GEMINI_CALLS_BEFORE_TRACKING = 19  # spent in the image spikes before this counter existed
+
+
+class PhotoError(Exception):
+    """Download, type, size, budget or Gemini failure; the message never contains the URL."""
+
+
+def download_photo(url: str) -> bytes:
+    if not url.startswith("https://"):
+        raise PhotoError("not https")
+    try:
+        with requests.get(url, stream=True, timeout=PHOTO_DOWNLOAD_TIMEOUT_S) as r:
+            r.raise_for_status()
+            if not r.headers.get("Content-Type", "").lower().startswith("image/"):
+                raise PhotoError("not an image")
+            data = b""
+            for chunk in r.iter_content(64 * 1024):
+                data += chunk
+                if len(data) > PHOTO_MAX_BYTES:
+                    raise PhotoError("larger than 10 MB")
+    except requests.RequestException as e:
+        raise PhotoError(f"download failed: {type(e).__name__}") from None
+    return data
+
+
+def spend_gemini_call() -> None:
+    """Count one call against the cap before making it; refuse once the cap is reached. Never retried."""
+    try:
+        used = json.loads(BUDGET_FILE.read_text())["used"]
+    except (OSError, ValueError, KeyError):
+        used = GEMINI_CALLS_BEFORE_TRACKING
+    if used >= GEMINI_CALL_CAP:
+        raise PhotoError(f"Gemini budget used up ({used}/{GEMINI_CALL_CAP})")
+    BUDGET_FILE.parent.mkdir(parents=True, exist_ok=True)
+    BUDGET_FILE.write_text(json.dumps({"used": used + 1, "cap": GEMINI_CALL_CAP}))
+    log.info("gemini call %d of %d", used + 1, GEMINI_CALL_CAP)
+
+
+def to_data_uri(im: Image.Image) -> str:
+    im = im.convert("RGB")
+    im.thumbnail((640, 640))
+    for quality in (70, 60, 50, 40, 30):
+        buf = io.BytesIO()
+        im.save(buf, "JPEG", quality=quality, optimize=True)
+        uri = "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+        if len(uri) <= PHOTO_DATA_URI_MAX:
+            return uri
+        if quality == 40:
+            im.thumbnail((480, 480))
+    raise PhotoError("edited image too large for a card")
+
+
+async def render_photo(photo_url: str, fix_ids: list[str], session_id: str = "-") -> dict:
+    """Edit the family's photo with the same prompt as the demo images. No markers: the card lists the fixes.
+
+    Only the edited image is kept, in assets/cache (gitignored) under the photo's hash; the original is not stored."""
+    t0 = time.monotonic()
+    data = await asyncio.to_thread(download_photo, photo_url)
+    digest = hashlib.sha256(data + ",".join(sorted(fix_ids)).encode()).hexdigest()[:16]
+    cached = CACHE / f"photo_{digest}_after.jpg"
+    if cached.exists():
+        log.info("[%s] photo render cache hit", session_id)
+        return {"after": to_data_uri(Image.open(cached)), "cached": True, "fix_item_ids": fix_ids}
+    try:
+        before = Image.open(io.BytesIO(data))
+        before.load()
+    except Exception:
+        raise PhotoError("unreadable image") from None
+    if not os.getenv("GOOGLE_API_KEY"):
+        raise PhotoError("no Gemini key")
+    spend_gemini_call()
+    try:
+        out = await asyncio.wait_for(asyncio.to_thread(_gemini_edit_sync, before, fix_ids), GEMINI_TIMEOUT_S)
+    except Exception as e:
+        raise PhotoError(f"gemini failed: {type(e).__name__}") from None
+    if not out:
+        raise PhotoError("gemini returned no image")
+    after = Image.open(io.BytesIO(out)).convert("RGB")
+    CACHE.mkdir(parents=True, exist_ok=True)
+    after.save(cached, "JPEG", quality=85)
+    log.info("[%s] photo render %.1fs", session_id, time.monotonic() - t0)
+    return {"after": to_data_uri(after), "cached": False, "fix_item_ids": fix_ids}
 
 
 def waterfall_path(total_cents: int, covered: list[tuple[str, int]], family_share_cents: int, out_dir: Path = CHARTS) -> Path:

@@ -17,7 +17,18 @@ agent.include(
 
 @agent.on_message(RenderRequest, replies=RenderResult)
 async def on_render(ctx: Context, sender: str, req: RenderRequest):
-    ctx.logger.info(f"[{req.session_id}] RenderRequest bathroom={req.bathroom_id} fixes={len(req.fix_item_ids)}")
+    ctx.logger.info(f"[{req.session_id}] RenderRequest bathroom={req.bathroom_id} fixes={len(req.fix_item_ids)} photo={bool(req.photo_url)}")
+    if req.photo_url:
+        try:
+            out = await render.render_photo(req.photo_url, req.fix_item_ids, req.session_id)
+            result = RenderResult(session_id=req.session_id, bathroom_id=req.bathroom_id, before_url="", after_url=out["after"],
+                                  marked_url=out["after"], cached=out["cached"], fix_item_ids=out["fix_item_ids"])
+        except Exception as exc:  # PhotoError messages never contain the URL
+            ctx.logger.error(f"[{req.session_id}] photo render failed: {exc if isinstance(exc, render.PhotoError) else type(exc).__name__}")
+            result = RenderResult(session_id=req.session_id, bathroom_id=req.bathroom_id, before_url="", after_url="",
+                                  marked_url="", error="photo_failed")
+        await ctx.send(sender, result)
+        return
     try:
         out = await render.render(req.bathroom_id, req.fix_item_ids, req.session_id)
         # Uploads can block, so keep them off the event loop.

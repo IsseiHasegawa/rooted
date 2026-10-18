@@ -170,6 +170,7 @@ SIM_SCOPE = os.getenv("SIM_SCOPE", "full")  # urgent | full; default is the scri
 SIM_PICK = os.getenv("SIM_PICK", "arbor")  # juniper | mesa | arbor; "" picks the first quote
 SIM_CHOICE = os.getenv("SIM_CHOICE", "fix_now")  # fix_now (demo path) | wait_picf (ends on the PICF checklist)
 SIM_DEMO = os.getenv("SIM_DEMO") == "1"  # press the buttons only and let DEMO_MODE fill Maria's profile
+SIM_PHOTO = os.getenv("SIM_PHOTO", "")  # an https image URL sent at the bathroom step, as ASI:One forwards an attachment
 
 MARIA = {
     "parent_name": "Maria", "age": "82", "community": "East Los Angeles", "zip_code": "90022", "tenure": "owner",
@@ -260,13 +261,36 @@ async def flow(ctx: Context) -> int:
     # An unparseable reply must bring the same card back.
     await next_card()
     await ctx.send(orch, text_message("what is the weather today?"))
+    pending = None
     for label, action, answer in steps:
         t0 = time.monotonic()
         try:
-            texts, (kind, payload) = await next_card()
+            texts, (kind, payload) = pending or await next_card()
+            pending = None
         except asyncio.TimeoutError:
             print(f"FAIL  {label:14s} no card arrived")
             return 1
+        if label == "RENDER" and not SIM_PHOTO:
+            title = payload.get("title", "")
+            if not title.startswith("What these fixes look like in a bathroom like"):
+                print(f"FAIL  {'RENDER':14s} preset after card title: {title!r}")
+                return 1
+        if label == "PICK_BATHROOM" and SIM_PHOTO:
+            await ctx.send(orch, text_message(f"The user attached an image: {SIM_PHOTO} They say: this is her bathroom"))
+            texts2, (kind2, payload2) = await next_card()
+            if kind2 == "detail" and payload2.get("title") == "Your bathroom, made safer":
+                ok = payload2["hero_image"].startswith("data:image/jpeg;base64,")
+                print(f"{'PASS' if ok else 'FAIL'}  {'PHOTO':14s}        {kind2:8s} {payload2['title']} ({len(payload2['hero_image'])} char image)  {' | '.join(texts2)[:60]}")
+                if not ok:
+                    return 1
+                pending = (texts2, (kind2, payload2))  # the RENDER step answers this card
+                continue
+            fell_back = any("couldn't process the photo" in x for x in texts2) and any(
+                s["action"] == "pick_bathroom" for s in find_selections(payload2))
+            print(f"{'PASS' if fell_back else 'FAIL'}  {'PHOTO':14s}        fallback to the picker: {' | '.join(texts2)[:80]}")
+            if not fell_back:
+                return 1
+            texts, (kind, payload) = texts2, (kind2, payload2)
         if not any(s["action"] == action for s in find_selections(payload)):
             print(f"FAIL  {label:14s} got a {kind} card without {action}: {texts}")
             return 1

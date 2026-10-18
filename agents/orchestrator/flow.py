@@ -35,7 +35,7 @@ from shared.models import (
 from shared.runtime import CONTRACTOR_KEYS, ROOT, address_of, message_text, text_message
 
 DEPOSIT_PERCENT = 30
-TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 15, "chart": 10}
+TIMEOUTS = {"risk": 15, "visualizer": 40, "photo": 30, "funding": 15, "contractor": 15, "chart": 10}
 
 PRICES = {p["id"]: p for p in json.loads((ROOT / "data" / "prices.json").read_text())["items"]}
 BATHROOMS = [
@@ -46,6 +46,10 @@ CONTRACTORS = {c["id"]: c for c in json.loads((ROOT / "data" / "contractors.json
 PROGRAMS = {p["id"]: p for p in json.loads((ROOT / "data" / "programs.json").read_text())["programs"]}
 FULL_REMODEL_ITEMS = [p["id"] for p in PRICES.values() if p["scope"] == "full"]
 NUMBER_WORDS = {1: "one", 2: "two"}
+PHOTO_URL = re.compile(r"https://[^\s<>\"')\]]+", re.I)
+IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
+BEFORE_PICKER = {"INTAKE", "STEADI_1", "STEADI_2", "RISK_RESULT"}
+PHOTO_FAILED = "I couldn't process the photo, so let's pick the closest layout instead."
 RESTART = re.compile(r"\b(start over|restart|new plan|reset)\b", re.I)
 
 # The selection action each state is waiting for.
@@ -172,6 +176,16 @@ def marker_order(marked_ids: list[str], hazard_ids: list[str]) -> list[str]:
     return marked + [f for f in hazard_ids if f in PRICES and f not in marked and PRICES[f]["category"] not in shown]
 
 
+def photo_url_in(text: str) -> str | None:
+    """An attached photo: ASI:One forwards it as a res.cloudinary.com link inside the text, not as a resource."""
+    for url in PHOTO_URL.findall(text or ""):
+        url = url.rstrip(".,;:!?")
+        parts = urlparse(url)
+        if (parts.hostname or "").endswith("res.cloudinary.com") or parts.path.lower().endswith(IMAGE_EXTENSIONS):
+            return url
+    return None
+
+
 def fix_list(item_ids: list[str]) -> list[dict]:
     return [{"id": i, "label": PRICES[i]["label"]} for i in item_ids if i in PRICES]
 
@@ -235,10 +249,47 @@ async def on_steadi_2(ctx: Context, s: dict, sel: dict) -> None:
 
 
 async def on_continue(ctx: Context, s: dict, sel: dict) -> None:
-    name = s["data"]["intake"]["parent_name"]
-    await show(ctx, s, "Most falls at home happen in the bathroom, so let's start there.",
-               cards.bathroom_pick_card(s["session_id"], BATHROOMS, name), drawer_width_px=cards.WIDE_DRAWER_PX)
     transition(ctx, s, "PICK_BATHROOM")
+    if s["data"].get("photo_url"):
+        await use_photo(ctx, s)
+        return
+    await show_picker(ctx, s, "Most falls at home happen in the bathroom, so let's start there.")
+
+
+async def show_picker(ctx: Context, s: dict, narration: str) -> None:
+    name = s["data"]["intake"]["parent_name"]
+    await show(ctx, s, narration, cards.bathroom_pick_card(s["session_id"], BATHROOMS, name), drawer_width_px=cards.WIDE_DRAWER_PX)
+
+
+def hazard_fix_ids(s: dict) -> list[str]:
+    fix_ids: list[str] = []
+    for h in s["data"]["risk"]["hazards"]:
+        fix_ids += [f for f in h.get("fix_item_ids", []) if f in PRICES and f not in fix_ids]
+    return fix_ids or ["grab_bar_tub", "grab_bar_toilet", "night_light"]
+
+
+async def use_photo(ctx: Context, s: dict) -> None:
+    """The family's own photo instead of the picker. Any failure falls back to the picker; nothing else changes."""
+    sid = s["session_id"]
+    fix_ids = hazard_fix_ids(s)
+    await say(ctx, s, "Drawing your bathroom with these fixes...")
+    render = await call(ctx, s, "visualizer", RenderRequest(session_id=sid, bathroom_id="photo", fix_item_ids=fix_ids,
+                                                            photo_url=s["data"]["photo_url"]), RenderResult, TIMEOUTS["photo"])
+    if render is None or render.error or not render.marked_url:
+        s["data"].pop("photo_url", None)  # don't try the same photo again
+        save(ctx, s)
+        ctx.logger.info(f"[{sid}] photo path failed ({render.error if render else 'timeout'}), showing the picker")
+        await show_picker(ctx, s, PHOTO_FAILED)
+        return
+    # No markers on a real photo, so the list keeps the line-item order.
+    s["data"].update(bathroom_id="photo", fix_item_ids=fix_ids, photo_after=render.marked_url)
+    save(ctx, s)
+    urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
+    full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
+    await show(ctx, s, "Here is your bathroom with these fixes.",
+               cards.after_detail_card(sid, "photo", render.marked_url, fix_list(fix_ids), urgent, full,
+                                       title="Your bathroom, made safer"))
+    transition(ctx, s, "RENDER")
 
 
 async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:
@@ -247,10 +298,7 @@ async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:
     if not bathroom_id:
         await resend_card(ctx, s, "Please pick one of the bathrooms.")
         return
-    fix_ids: list[str] = []
-    for h in s["data"]["risk"]["hazards"]:
-        fix_ids += [f for f in h.get("fix_item_ids", []) if f in PRICES and f not in fix_ids]
-    fix_ids = fix_ids or ["grab_bar_tub", "grab_bar_toilet", "night_light"]
+    fix_ids = hazard_fix_ids(s)
     await say(ctx, s, "Drawing the safer version of this bathroom...")
     render = await call(ctx, s, "visualizer", RenderRequest(session_id=sid, bathroom_id=bathroom_id, fix_item_ids=fix_ids),
                         RenderResult, TIMEOUTS["visualizer"])
@@ -261,8 +309,10 @@ async def on_pick_bathroom(ctx: Context, s: dict, sel: dict) -> None:
     save(ctx, s)
     urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
     full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
+    # A preset room, not theirs, so the title says what it is.
+    title = f"What these fixes look like in a bathroom like {s['data']['intake']['parent_name']}'s"
     await show(ctx, s, "The numbers on the picture match the list of fixes.",
-               cards.after_detail_card(sid, bathroom_id, marked, fix_list(fix_ids), urgent, full))
+               cards.after_detail_card(sid, bathroom_id, marked, fix_list(fix_ids), urgent, full, title=title))
     transition(ctx, s, "RENDER")
 
 
@@ -521,15 +571,33 @@ async def _handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
         s = load(ctx, active) if active else None
     if s is not None and s["sender"] != sender:
         s = None  # a session belongs to the family member who started it
+    photo = photo_url_in(text)
     if s is None or s["state"] in TERMINAL or RESTART.search(text):
         s = new_session(ctx, sender, str(ctx.session))
         await start(ctx, s)
+        if photo:
+            s["data"]["photo_url"] = photo  # used once the flow reaches the bathroom step
+            save(ctx, s)
+            ctx.logger.info(f"[{s['session_id']}] photo received with the first message")
         return
     if s["state"] in PAYING:
         await billing.on_owner_text(ctx, s, sender, text)
         return
+    if photo:
+        s["data"]["photo_url"] = photo
+        save(ctx, s)
+        ctx.logger.info(f"[{s['session_id']}] photo received in {s['state']}")
+        if s["state"] in ("PICK_BATHROOM", "RENDER"):
+            transition(ctx, s, "PICK_BATHROOM")
+            await use_photo(ctx, s)
+            return
     expected = EXPECTED.get(s["state"], set())
     sel = parse(text, expected)  # now that the card is known, its own actions win in planner prose
+    if photo and (not sel or sel.get("action") not in expected):
+        note = ("Thanks for the photo. I'll use it when we get to the bathroom." if s["state"] in BEFORE_PICKER
+                else "Thanks for the photo. This plan already has its picture; say \"start over\" to use the photo.")
+        await resend_card(ctx, s, note)
+        return
     if not sel or sel.get("action") not in expected:
         # Never the raw text: it can carry income or health answers.
         ctx.logger.info(f"[{s['session_id']}] {s['state']}: unexpected selection (parsed action={(sel or {}).get('action')}, "

@@ -45,6 +45,7 @@ class RenderRequest(Model):
     session_id: str
     bathroom_id: str
     fix_item_ids: list[str] = []  # marker numbers follow this order
+    photo_url: str = ""  # the family's own bathroom photo (https); edited without markers
 
 
 class RenderResult(Model):

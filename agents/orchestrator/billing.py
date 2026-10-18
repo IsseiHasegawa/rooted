@@ -293,7 +293,7 @@ async def complete(ctx: Context, s: dict) -> None:
     for p, amount in zip(payers, shares):
         p["charges"]["balance"] = {"amount_cents": amount, "paid": False}
     booking = s["data"].get("booking", {})
-    photo = f"assets/fallback/{s['data'].get('bathroom_id', 'b1')}/after.png"
+    photo = s["data"].get("photo_after") or f"assets/fallback/{s['data'].get('bathroom_id', 'b1')}/after.png"
     even_pair = len(payers) == 2 and not s["data"].get("split_percents")
     await flow.show(ctx, s, "The work is done and passed the completion check.",
                     cards.completion_card(sid, booking.get("booking_id", ""), photo, m["balance_cents"],
