@@ -134,8 +134,13 @@ def test_photo_success_sends_the_picture_then_the_fix_list():
     card = s["card"]["payload"]["root"]
     assert s["state"] == "RENDER" and card["title"] == "Your bathroom, made safer"
     assert "image" not in json_dump(card)
+    # Worded for any layout, toilet bar added, in this order, whatever order the hazards came in.
     assert [i["children"][0]["value"] for i in card["children"][0]["items"]] == [
-        f"Fix {n}: {flow.PRICES[i]['label']}" for n, i in enumerate(("non_slip_mat", "night_light", "grab_bar_tub"), 1)]
+        "Fix 1: Grab bar in the tub or shower", "Fix 2: Slip-resistant surface in the tub or shower",
+        "Fix 3: Grab bar next to the toilet", "Fix 4: Motion night lights on the bed-to-bath path"]
+    texts = [flow.message_text(m) for m in ctx.sent if not getattr(m, "content", [None])[0].__class__.__name__ == "ResourceContent"]
+    assert flow.PHOTO_SHOWN in texts
+    assert flow.PHOTO_SHOWN == "Here is your bathroom with these fixes (AI preview; the contractor confirms on site)."
     assert card["children"][-1]["action"]["selection"]["action"] == "get_quotes"
 
 
@@ -178,3 +183,15 @@ def test_photo_in_the_first_message_is_kept_for_the_bathroom_step():
     use_photo.assert_awaited_once()
     # The URL itself is never logged.
     assert not any("cloudinary.com/demo" in str(c) for c in ctx.logger.info.call_args_list)
+
+
+def test_photo_prompt_fits_any_layout():
+    prompt = render.photo_prompt(flow.photo_fix_ids(["grab_bar_shower", "night_light"]))
+    assert prompt.startswith("Edit this photo of the bathroom. Add these to the existing tub or shower, toilet and path; "
+                             "keep everything else identical:")
+    assert "grab bar next to the toilet" in prompt and prompt.count("tub or shower") == 3
+
+
+def test_photo_quote_items_use_the_photo_wording():
+    items = flow.line_items(flow.photo_fix_ids([]), flow.PHOTO_LABELS)
+    assert [i.label for i in items][:2] == ["Grab bar in the tub or shower", "Slip-resistant surface in the tub or shower"]

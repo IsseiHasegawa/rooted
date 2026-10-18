@@ -42,6 +42,18 @@ FONT = "/System/Library/Fonts/Helvetica.ttc"
 EDIT_PROMPT = (
     "Edit this photo of the bathroom. Keep the same room, walls, tiles, lighting and camera angle. Only add: {items}."
 )
+# The family's own photo can show any layout, so the fixes are phrased to fit a tub or a shower.
+PHOTO_PROMPT = (
+    "Edit this photo of the bathroom. Add these to the existing tub or shower, toilet and path; "
+    "keep everything else identical: {items}."
+)
+PHOTO_PHRASES = {
+    "grab_bar_tub": "a stainless steel grab bar in the tub or shower",
+    "grab_bar_shower": "a stainless steel grab bar in the tub or shower",
+    "non_slip_mat": "a slip-resistant surface in the tub or shower",
+    "grab_bar_toilet": "a stainless steel grab bar next to the toilet",
+    "night_light": "motion night lights on the path from the bedroom to the bathroom",
+}
 
 
 def _font(size: int):
@@ -84,12 +96,16 @@ def draw_markers(src: Path, dst: Path, bathroom_id: str, fix_ids: list[str]) -> 
     im.save(dst)
 
 
-def _gemini_edit_sync(before: Path | Image.Image, fix_ids: list[str], bathroom_id: str = "") -> bytes | None:
+def photo_prompt(fix_ids: list[str]) -> str:
+    return PHOTO_PROMPT.format(items=", ".join(dict.fromkeys(PHOTO_PHRASES.get(f) or catalog.phrase(f) for f in fix_ids)))
+
+
+def _gemini_edit_sync(before: Path | Image.Image, fix_ids: list[str], bathroom_id: str = "", prompt: str | None = None) -> bytes | None:
     from google import genai
     from google.genai import types
 
     client = genai.Client(api_key=os.environ["GOOGLE_API_KEY"])
-    prompt = EDIT_PROMPT.format(items=", ".join(catalog.phrase(f, bathroom_id) for f in fix_ids))
+    prompt = prompt or EDIT_PROMPT.format(items=", ".join(catalog.phrase(f, bathroom_id) for f in fix_ids))
     r = client.models.generate_content(
         model=MODEL,
         contents=[prompt, before if isinstance(before, Image.Image) else Image.open(before)],
@@ -244,7 +260,8 @@ async def render_photo(photo_url: str, fix_ids: list[str], session_id: str = "-"
     Only the edited image is kept, in assets/cache (gitignored) under the photo's hash; the original is not stored."""
     t0 = time.monotonic()
     data = await asyncio.to_thread(download_photo, photo_url)
-    digest = hashlib.sha256(data + ",".join(sorted(fix_ids)).encode()).hexdigest()[:16]
+    prompt = photo_prompt(fix_ids)
+    digest = hashlib.sha256(data + prompt.encode()).hexdigest()[:16]  # a new prompt or fix set is a new image
     cached = CACHE / f"photo_{digest}_after.jpg"
     if cached.exists():
         log.info("[%s] photo render cache hit", session_id)
@@ -258,7 +275,7 @@ async def render_photo(photo_url: str, fix_ids: list[str], session_id: str = "-"
         raise PhotoError("no Gemini key")
     spend_gemini_call()
     try:
-        out = await asyncio.wait_for(asyncio.to_thread(_gemini_edit_sync, before, fix_ids), GEMINI_TIMEOUT_S)
+        out = await asyncio.wait_for(asyncio.to_thread(_gemini_edit_sync, before, fix_ids, "", prompt), GEMINI_TIMEOUT_S)
     except Exception as e:
         raise PhotoError(f"gemini failed: {type(e).__name__}") from None
     if not out:

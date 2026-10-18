@@ -54,6 +54,16 @@ PHOTO_URL = re.compile(r"https://[^\s<>\"')\]]+", re.I)
 IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".webp", ".heic", ".gif")
 BEFORE_PICKER = {"INTAKE", "STEADI_1", "STEADI_2", "RISK_RESULT"}
 PHOTO_FAILED = "I couldn't process the photo, so let's pick the closest layout instead."
+PHOTO_SHOWN = "Here is your bathroom with these fixes (AI preview; the contractor confirms on site)."
+# An uploaded photo can show any layout, so its fixes are worded to fit a tub or a shower, in this order.
+PHOTO_FIXES = ["grab_bar_tub", "non_slip_mat", "grab_bar_toilet", "night_light"]
+PHOTO_LABELS = {
+    "grab_bar_tub": "Grab bar in the tub or shower",
+    "grab_bar_shower": "Grab bar in the tub or shower",
+    "non_slip_mat": "Slip-resistant surface in the tub or shower",
+    "grab_bar_toilet": "Grab bar next to the toilet",
+    "night_light": "Motion night lights on the bed-to-bath path",
+}
 RESTART = re.compile(r"\b(start over|restart|new plan|reset)\b", re.I)
 
 # The selection action each state is waiting for.
@@ -161,9 +171,9 @@ async def call(ctx: Context, s: dict, key: str, msg: Model, reply_type: type[Mod
     return reply
 
 
-def line_items(item_ids: list[str]) -> list[LineItem]:
+def line_items(item_ids: list[str], labels: dict[str, str] | None = None) -> list[LineItem]:
     return [
-        LineItem(id=i, label=PRICES[i]["label"], category=PRICES[i]["category"],
+        LineItem(id=i, label=(labels or {}).get(i, PRICES[i]["label"]), category=PRICES[i]["category"],
                  unit_price_cents=PRICES[i]["unit_price_cents"], structural=PRICES[i]["structural"])
         for i in item_ids if i in PRICES
     ]
@@ -190,8 +200,14 @@ def photo_url_in(text: str) -> str | None:
     return None
 
 
-def fix_list(item_ids: list[str]) -> list[dict]:
-    return [{"id": i, "label": PRICES[i]["label"]} for i in item_ids if i in PRICES]
+def fix_list(item_ids: list[str], labels: dict[str, str] | None = None) -> list[dict]:
+    return [{"id": i, "label": (labels or {}).get(i, PRICES[i]["label"])} for i in item_ids if i in PRICES]
+
+
+def photo_fix_ids(hazard_ids: list[str]) -> list[str]:
+    """The four core fixes in a fixed order (the toilet bar always included), then any other hazard fix."""
+    hazard_ids = ["grab_bar_tub" if f == "grab_bar_shower" else f for f in hazard_ids]
+    return PHOTO_FIXES + [f for f in hazard_ids if f not in PHOTO_FIXES]
 
 
 # ---- state handlers --------------------------------------------------------
@@ -275,7 +291,7 @@ def hazard_fix_ids(s: dict) -> list[str]:
 async def use_photo(ctx: Context, s: dict) -> None:
     """The family's own photo instead of the picker. Any failure falls back to the picker; nothing else changes."""
     sid = s["session_id"]
-    fix_ids = hazard_fix_ids(s)
+    fix_ids = photo_fix_ids(hazard_fix_ids(s))
     await say(ctx, s, "Drawing your bathroom with these fixes...")
     render = await call(ctx, s, "visualizer", RenderRequest(session_id=sid, bathroom_id="photo", fix_item_ids=fix_ids,
                                                             photo_url=s["data"]["photo_url"]), RenderResult, TIMEOUTS["photo"])
@@ -299,12 +315,12 @@ async def use_photo(ctx: Context, s: dict) -> None:
     # No markers on a real photo, so the list keeps the line-item order.
     s["data"].update(bathroom_id="photo", fix_item_ids=fix_ids)
     save(ctx, s)
-    await say(ctx, s, "Here is your bathroom with these fixes.")
+    await say(ctx, s, PHOTO_SHOWN)
     await ctx.send(s["sender"], resource)
     urgent = sum(i.unit_price_cents for i in line_items(fix_ids))
     full = urgent + sum(i.unit_price_cents for i in line_items(FULL_REMODEL_ITEMS))
     await show(ctx, s, "These are the fixes in the picture above.",
-               cards.photo_fixes_card(sid, fix_list(fix_ids), urgent, full))
+               cards.photo_fixes_card(sid, fix_list(fix_ids, PHOTO_LABELS), urgent, full))
     transition(ctx, s, "RENDER")
 
 
@@ -356,7 +372,8 @@ async def on_get_quotes(ctx: Context, s: dict, sel: dict) -> None:
     s["data"].update(scope=scope, item_ids=item_ids)
     save(ctx, s)
     await say(ctx, s, "Checking 3 contractors...")
-    req = QuoteRequest(session_id=sid, line_items=line_items(item_ids), zip_code=s["data"]["intake"]["zip_code"], scope=scope)
+    labels = PHOTO_LABELS if s["data"].get("bathroom_id") == "photo" else None
+    req = QuoteRequest(session_id=sid, line_items=line_items(item_ids, labels), zip_code=s["data"]["intake"]["zip_code"], scope=scope)
     replies = await asyncio.gather(*(call(ctx, s, k, req, Quote, TIMEOUTS["contractor"]) for k in CONTRACTOR_KEYS))
     quotes = [q for q in replies if q is not None]
     if not quotes:
