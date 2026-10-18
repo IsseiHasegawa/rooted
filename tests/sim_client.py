@@ -134,8 +134,8 @@ async def smoke(ctx: Context) -> int:
 
 # ---- flow ------------------------------------------------------------------
 
-SIM_SCOPE = os.getenv("SIM_SCOPE", "urgent")  # urgent | full
-SIM_PICK = os.getenv("SIM_PICK", "")  # juniper | mesa | arbor; default: first quote in the carousel
+SIM_SCOPE = os.getenv("SIM_SCOPE", "full")  # urgent | full; default is the scripted demo path
+SIM_PICK = os.getenv("SIM_PICK", "arbor")  # juniper | mesa | arbor; "" picks the first quote
 
 MARIA = {
     "parent_name": "Maria", "age": "82", "community": "East Los Angeles", "zip_code": "90022", "tenure": "owner",
