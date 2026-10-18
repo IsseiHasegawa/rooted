@@ -9,6 +9,7 @@ import asyncio
 import json
 import re
 from typing import Any
+from urllib.parse import urlparse
 
 from uagents import Context, Model
 from uagents_core.contrib.protocols.chat import ChatMessage
@@ -464,7 +465,27 @@ HANDLERS = {
 FALLBACK_TEXT = "Sorry, something went wrong on my side. Please try that again, or say \"start over\"."
 
 
+def log_non_text(ctx: Context, sender: str, msg: ChatMessage) -> None:
+    """Shape of anything that isn't text (e.g. an image attachment): type, URL scheme and host, MIME type and
+    metadata key names. Never the full URL, a file name or other values, which can identify the family."""
+    for c in msg.content:
+        kind = getattr(c, "type", type(c).__name__)
+        if kind == "text":
+            continue
+        detail = ""
+        if kind == "resource":
+            resources = c.resource if isinstance(c.resource, list) else [c.resource]
+            detail = "; ".join(f"uri={urlparse(r.uri).scheme}://{urlparse(r.uri).hostname} "
+                               f"mime={(r.metadata or {}).get('mime_type', '?')} meta_keys={sorted(r.metadata or {})}"
+                               for r in resources)
+        elif kind == "metadata":
+            detail = f"keys={sorted(c.metadata)}"
+        ctx.logger.info(f"[{ctx.storage.get(_active_key(sender))}] non-text content from {sender}: "
+                        f"{kind} ({type(c).__name__}) {detail}".rstrip())
+
+
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
+    log_non_text(ctx, sender, msg)
     try:
         await _handle_chat(ctx, sender, msg)
     except Exception as exc:  # a crash must still leave the family with a reply and the card they were on
