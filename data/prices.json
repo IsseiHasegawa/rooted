@@ -1,0 +1,126 @@
+{
+  "_comment": "Market rates per fix item. Contractor quotes apply their multiplier from data/contractors.json. Items marked placeholder have no sourced price yet and must be replaced with Homewyse LA ZIP prices before the demo.",
+  "items": [
+    {
+      "id": "grab_bar_tub",
+      "label": "Grab bar inside the tub",
+      "category": "grab_bar",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 30000,
+      "source_url": "https://www.homeadvisor.com/cost/disability-accommodation/grab-bar",
+      "source_note": "HomeAdvisor national average $300 (typical $200-$350)",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "grab_bar_toilet",
+      "label": "Grab bar next to the toilet",
+      "category": "grab_bar",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 30000,
+      "source_url": "https://www.homeadvisor.com/cost/disability-accommodation/grab-bar",
+      "source_note": "HomeAdvisor national average $300 (typical $200-$350)",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "non_slip_mat",
+      "label": "Non-slip strips in the tub",
+      "category": "non_slip_flooring",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 6000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "night_light",
+      "label": "Night lights on the bed-to-bath path",
+      "category": "lighting",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 4000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "handheld_shower",
+      "label": "Handheld shower head",
+      "category": "handheld_shower",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 25000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "raised_toilet_seat",
+      "label": "Raised toilet seat",
+      "category": "raised_toilet_seat",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 15000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "bedside_lamp",
+      "label": "Lamp within reach of the bed",
+      "category": "lighting",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 5000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "rug_tape",
+      "label": "Secure throw rugs with double-sided tape",
+      "category": "non_slip_flooring",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 2000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "cord_cover",
+      "label": "Move or cover cords on the walkway",
+      "category": "walkway",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 3000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "handrail",
+      "label": "Handrail on the path",
+      "category": "walkway",
+      "structural": false,
+      "scope": "urgent",
+      "unit_price_cents": 35000,
+      "source_url": "",
+      "source_note": "placeholder",
+      "as_of": "2026-10-17"
+    },
+    {
+      "id": "tub_to_shower",
+      "label": "Tub to walk-in shower conversion",
+      "category": "tub_to_shower",
+      "structural": true,
+      "scope": "full",
+      "unit_price_cents": 300000,
+      "source_url": "https://www.angi.com/articles/convert-tub-to-shower.htm",
+      "source_note": "Angi national average $3,000 (range $1,200-$8,000)",
+      "as_of": "2026-10-17"
+    }
+  ]
+}
