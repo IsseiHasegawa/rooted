@@ -2,13 +2,16 @@
 
 smoke: sends one request to every agent in parallel and checks each one replies.
 flow:  plays the daughter in one chat session as Maria's family, from INTAKE to SPLIT, clicking each card.
+pay:   flow, then this chat's deposit share, booking, /complete and its balance share with stubbed Stripe
+       (the other payer's share stays pending). Needs the orchestrator started with ROOTED_PAYMENTS=stub.
 Start the agents first (scripts/run_all.py).
 
-Usage: .venv/bin/python tests/sim_client.py [smoke|flow|all]   (default: all)
+Usage: .venv/bin/python tests/sim_client.py [smoke|flow|pay|all]   (default: all = smoke + flow)
 """
 import asyncio
 import json
 import os
+import re
 import secrets
 import sys
 import time
@@ -21,6 +24,13 @@ sys.path.insert(0, str(ROOT))
 
 from uagents import Agent, Context  # noqa: E402
 from uagents_core.contrib.protocols.chat import ChatAcknowledgement, ChatMessage, MetadataContent  # noqa: E402
+from uagents_core.contrib.protocols.payment import (  # noqa: E402
+    CancelPayment,
+    CommitPayment,
+    CompletePayment,
+    Funds,
+    RequestPayment,
+)
 
 from shared.models import (  # noqa: E402
     AssessRequest,
@@ -77,11 +87,27 @@ async def run_one(ctx: Context, label: str, key: str, msg, reply_type):
 
 MODE = sys.argv[1] if len(sys.argv) > 1 else "all"
 inbox: asyncio.Queue = asyncio.Queue()
+pay_inbox: asyncio.Queue = asyncio.Queue()
 
 
 @sim.on_message(ChatMessage)
 async def on_chat(ctx: Context, sender: str, msg: ChatMessage):
     await inbox.put(msg)
+
+
+@sim.on_message(RequestPayment)
+async def on_request_payment(ctx: Context, sender: str, msg: RequestPayment):
+    await pay_inbox.put(msg)
+
+
+@sim.on_message(CompletePayment)
+async def on_complete_payment(ctx: Context, sender: str, msg: CompletePayment):
+    await pay_inbox.put(msg)
+
+
+@sim.on_message(CancelPayment)
+async def on_cancel_payment(ctx: Context, sender: str, msg: CancelPayment):
+    await pay_inbox.put(msg)
 
 
 @sim.on_message(ChatAcknowledgement)
@@ -97,8 +123,10 @@ async def main(ctx: Context):
         failed = 0
         if MODE in ("smoke", "all"):
             failed += await smoke(ctx)
-        if MODE in ("flow", "all"):
+        if MODE in ("flow", "all", "pay"):
             failed += await flow(ctx)
+        if MODE == "pay" and not failed:
+            failed += await pay(ctx)
     except Exception:
         traceback.print_exc()
         failed = 1
@@ -136,6 +164,7 @@ async def smoke(ctx: Context) -> int:
 
 SIM_SCOPE = os.getenv("SIM_SCOPE", "full")  # urgent | full; default is the scripted demo path
 SIM_PICK = os.getenv("SIM_PICK", "arbor")  # juniper | mesa | arbor; "" picks the first quote
+SIM_CHOICE = os.getenv("SIM_CHOICE", "fix_now")  # fix_now (demo path) | wait_picf (ends on the PICF checklist)
 
 MARIA = {
     "parent_name": "Maria", "age": "82", "community": "East Los Angeles", "zip_code": "90022", "tenure": "owner",
@@ -213,7 +242,8 @@ async def flow(ctx: Context) -> int:
         ("RENDER", "get_quotes", lambda p: {**pick(p, "get_quotes"), "scope": SIM_SCOPE}),
         ("QUOTES", "pick_quote", lambda p: next(s for s in find_selections(p) if s["action"] == "pick_quote"
                                                 and s.get("contractor_id") == SIM_PICK) if SIM_PICK else pick(p, "pick_quote")),
-        ("FUNDING", "accept_funding", lambda p: pick(p, "accept_funding")),
+        ("FUNDING", "accept_funding", lambda p: next(s for s in find_selections(p) if s["action"] == "accept_funding"
+                                                     and s.get("choice") == SIM_CHOICE)),
         ("REVIEW", "approve", lambda p: pick(p, "approve")),
         ("CONSENT", "consent", lambda p: pick(p, "consent")),
         ("SPLIT", "submit_split", lambda p: {**pick(p, "submit_split"), "payers": "2", "split": "even", "payer_contacts": "@leo"}),
@@ -253,10 +283,98 @@ async def flow(ctx: Context) -> int:
             print(f"PASS  {'CONSENT':14s}        approved=false -> consent card re-sent")
             sel = {"selection": sel, "approved": True}
         await ctx.send(orch, text_message(json.dumps(sel)))
+        if label == "FUNDING" and SIM_CHOICE == "wait_picf":
+            texts, (kind, payload) = await next_card()
+            title = payload.get("root", {}).get("title", "")
+            ok = title.startswith("Waiting for") and "Nothing has been charged" in json.dumps(payload)
+            print(f"{'PASS' if ok else 'FAIL'}  {'WAIT_PICF':14s}        {kind:8s} {title}  {' | '.join(texts)[:60]}")
+            return 0 if ok else 1
     texts, (kind, payload) = await next_card()
     print(f"PASS  {'PAY':14s}        {kind:8s} {payload['root'].get('title')}: {payload['root'].get('subtitle')}  {' | '.join(texts)[:60]}")
     print("flow reached PAY")
     return 0
+
+
+# ---- pay (stubbed Stripe) --------------------------------------------------
+
+async def next_payment(kind: type, timeout: float = 30):
+    """Next payment-protocol message, which must be of the given type."""
+    msg = await asyncio.wait_for(pay_inbox.get(), timeout)
+    if not isinstance(msg, kind):
+        raise AssertionError(f"expected {kind.__name__}, got {type(msg).__name__}")
+    return msg
+
+
+async def drain_chat(seconds: float = 2) -> list[str]:
+    texts = []
+    try:
+        while True:
+            texts.append(message_text(await asyncio.wait_for(inbox.get(), seconds)))
+    except asyncio.TimeoutError:
+        return texts
+
+
+def commit_for(req: RequestPayment, orch: str) -> CommitPayment:
+    stripe = req.metadata["stripe"]
+    return CommitPayment(funds=Funds(currency="USD", amount=req.accepted_funds[0].amount, payment_method="stripe"),
+                         recipient=orch, transaction_id=stripe["checkout_session_id"], reference=req.reference)
+
+
+async def card_titled(title: str, timeout: float = 60) -> tuple[list[str], tuple[str, dict]]:
+    """Skip status cards until the custom card with this title arrives."""
+    deadline = time.monotonic() + timeout
+    seen = []
+    while True:
+        texts, (kind, payload) = await next_card(max(0.1, deadline - time.monotonic()))
+        seen += texts
+        if payload.get("root", {}).get("title") == title:
+            return seen, (kind, payload)
+
+
+async def pay_one(ctx: Context, orch: str, req: RequestPayment, label: str, early_commit: bool = False) -> None:
+    stripe = req.metadata["stripe"]
+    keys = {"ui_mode", "publishable_key", "client_secret", "checkout_session_id", "currency", "amount_cents"}
+    assert keys <= set(stripe), f"metadata.stripe missing {keys - set(stripe)}"
+    assert str(stripe["amount_cents"]) == str(round(float(req.accepted_funds[0].amount) * 100)), "amount mismatch"
+    cs = stripe["checkout_session_id"]
+    if early_commit:
+        await ctx.send(orch, commit_for(req, orch))
+        cancel = await next_payment(CancelPayment)
+        print(f"PASS  {label:14s}        commit before checkout -> CancelPayment: {cancel.reason}")
+    await ctx.send(orch, text_message(f"/stub-paid {cs}"))
+    await drain_chat(1)
+    await ctx.send(orch, commit_for(req, orch))
+    await next_payment(CompletePayment)
+    print(f"PASS  {label:14s}        ${int(stripe['amount_cents']) / 100:.2f} {cs} -> CompletePayment")
+
+
+async def pay(ctx: Context) -> int:
+    orch = address_of("orchestrator")
+    try:
+        req0 = await next_payment(RequestPayment)
+        print(f"PASS  {'DEPOSIT':14s}        RequestPayment {req0.accepted_funds[0].amount} USD (this chat's share only)")
+        await pay_one(ctx, orch, req0, "DEPOSIT", early_commit=True)
+        texts, (kind, payload) = await card_titled("Booked")
+        body = json.dumps(payload)
+        assert "still pending" in body, "booking card does not mention the pending share"
+        print(f"PASS  {'BOOKED':14s}        {kind:8s} {payload['root'].get('subtitle')}  {' | '.join(texts)[:70]}")
+        try:
+            extra = await next_payment(RequestPayment, timeout=2)
+            raise AssertionError(f"unexpected RequestPayment for {extra.accepted_funds[0].amount}")
+        except asyncio.TimeoutError:
+            print(f"PASS  {'ONE PAYER':14s}        no RequestPayment for the pending share")
+        await ctx.send(orch, text_message("/complete"))
+        texts, (kind, payload) = await card_titled("Work completed")
+        req = await next_payment(RequestPayment)
+        print(f"PASS  {'COMPLETE':14s}        completion card + balance request {req.accepted_funds[0].amount} USD")
+        await pay_one(ctx, orch, req, "BALANCE")
+        texts = await drain_chat(3)
+        assert any("balance share is paid" in t for t in texts), f"no balance-paid message: {texts}"
+        print("pay reached DONE")
+        return 0
+    except (AssertionError, asyncio.TimeoutError) as e:
+        print(f"FAIL  pay: {type(e).__name__}: {e}")
+        return 1
 
 
 if __name__ == "__main__":

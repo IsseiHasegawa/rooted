@@ -87,7 +87,7 @@ def test_selections_round_trip(name):
 
 
 def test_every_interactive_card_has_a_cta():
-    terminal = {"03b_low_risk", "11_payment_status", "12_booking", "13_completion"}
+    terminal = {"03b_low_risk", "07b_wait_picf", "11_payment_status", "12_booking", "13_completion"}
     for name, (kind, payload) in SAMPLES.items():
         if name not in terminal:
             assert cta_selections(kind, payload), name
@@ -190,13 +190,13 @@ FUNDING = {
     "matches": [
         {"program_id": "sample_ma_plan_a", "name": "Sample plan A", "amount_cents": 16_000, "covered_item_ids": ["grab_bar_tub"],
          "source_url": "https://x", "as_of": "2026-10-17", "funded_later": False},
-        {"program_id": "lacda", "name": "LACDA Senior Grant", "amount_cents": 300_000, "covered_item_ids": ["tub_to_shower"],
+        {"program_id": "lacda_senior_grant", "name": "LACDA Senior Grant", "amount_cents": 300_000, "covered_item_ids": ["tub_to_shower"],
          "source_url": "https://y", "as_of": "2026-10-17", "funded_later": True},
     ],
 }
 LABELS = {"grab_bar_tub": "Grab bar inside the tub", "night_light": "Night light", "tub_to_shower": "Tub to walk-in shower"}
 TODAY = "Today: urgent safety fixes (Grab bar inside the tub, Night light), $585.50 due now, 30% deposit $175.65"
-LATER = "Tub to walk-in shower funded by LACDA Senior Grant (up to $3,000, approval not guaranteed)"
+LATER = "LACDA Senior Grant covers the $3,000 tub to walk-in shower (program max $20,000, approval not guaranteed)"
 
 
 def test_funding_summary_two_tracks():
@@ -204,7 +204,7 @@ def test_funding_summary_two_tracks():
     m = funding_summary(FUNDING, 30, LABELS)
     assert m["due_now_cents"] == 58_550 and m["deposit_cents"] == 17_565 and m["balance_cents"] == 40_985
     assert m["today_items"] == ["Grab bar inside the tub", "Night light"]
-    assert m["grants"] == [{"name": "LACDA Senior Grant", "amount_cents": 300_000, "item_ids": ["tub_to_shower"],
+    assert m["grants"] == [{"name": "LACDA Senior Grant", "amount_cents": 300_000, "max_cents": 2_000_000, "item_ids": ["tub_to_shower"],
                             "items": ["Tub to walk-in shower"]}]
     # pay_now_cents is the source of truth; grants never reduce or join today's payment.
     assert funding_summary({**FUNDING, "pay_now_cents": 40_000})["deposit_cents"] == 12_000
@@ -243,3 +243,53 @@ def test_funding_result_model_accepted():
     model = FundingResult(session_id=SID, **FUNDING)
     assert funding_summary(model)["due_now_cents"] == 58_550
     assert funding_card(SID, "q_mesa_1", model)[0] == "custom"
+
+
+def test_grant_line_without_known_max():
+    from shared.cards import funding_summary, grant_lines
+    unknown = {**FUNDING, "matches": [{**FUNDING["matches"][1], "program_id": "picf_hud_home_modification", "name": "PICF"}]}
+    assert grant_lines(funding_summary(unknown, 30, LABELS)) == [
+        "After grant approval: PICF covers the $3,000 tub to walk-in shower (approval not guaranteed)"]
+
+
+PICF = {"program_id": "picf_hud_home_modification", "name": "PICF", "amount_cents": 58_550,
+        "covered_item_ids": ["grab_bar_tub", "night_light"], "source_url": "https://www.picf.org/individuals-caregivers/",
+        "as_of": "2026-10-17", "funded_later": True, "alternative_to_pay_now": True}
+
+
+def test_picf_alternative_track():
+    from shared.cards import funding_card, funding_summary
+    funding = {**FUNDING, "matches": FUNDING["matches"] + [PICF]}
+    m = funding_summary(funding, 30, LABELS)
+    assert m["due_now_cents"] == 58_550 and [g["name"] for g in m["grants"]] == ["LACDA Senior Grant"]
+    assert m["alternatives"][0]["items"] == ["Grab bar inside the tub", "Night light"]
+    payload = funding_card(SID, "q_mesa_1", funding, 30, LABELS)[1]
+    text = json.dumps(payload)
+    assert "Can wait for approval? PICF may cover these items instead: Grab bar inside the tub, Night light." in text
+    assert "will not pay back work done before approval" in text
+    assert "reimburse" not in text.lower() and "pays back" not in text.lower()
+    choices = {(s.get("choice"), s.get("prepare_packet")) for s in cta_selections("custom", payload)}
+    assert choices == {("fix_now", "no"), ("fix_now", "yes"), ("wait_picf", None)}
+    wait = next(s for s in cta_selections("custom", payload) if s["choice"] == "wait_picf")
+    assert wait["program_id"] == "picf_hud_home_modification"
+    parsed = parse_selection(planner_prose(wait))
+    assert {k: parsed.get(k) for k in wait} == wait
+
+
+def test_no_wait_button_without_alternative():
+    from shared.cards import funding_card
+    payload = funding_card(SID, "q_mesa_1", FUNDING, 30, LABELS)[1]
+    assert {s.get("choice") for s in cta_selections("custom", payload)} == {"fix_now"}
+
+
+def test_accept_funding_prose_defaults_to_fix_now():
+    assert parse_selection("The user chose to accept_funding")["choice"] == "fix_now"
+    assert parse_selection("They want to wait for PICF")["choice"] == "wait_picf"
+
+
+def test_wait_card_is_from_program_record():
+    from shared.cards import _program, wait_for_program_card
+    kind, payload = wait_for_program_card(SID, _program("picf_hud_home_modification"), ["Grab bar"])
+    text = json.dumps(payload)
+    assert kind == "custom" and "Nothing has been charged" in text and "Request Form" in text
+    assert "62 or older" in text and "picf.org" in text and "not guaranteed" in text

@@ -19,6 +19,7 @@ MAX_PAYLOAD_BYTES = 64 * 1024
 MAX_DEPTH = 8
 
 STEADI_PATH = ROOT / "data" / "steadi.json"
+PROGRAMS_PATH = ROOT / "data" / "programs.json"
 STEADI_LABEL = "Based on CDC STEADI"
 
 # Card Playground check #5: public https images render, so every card image is a public URL. Relative refs
@@ -289,10 +290,16 @@ def funding_summary(funding: Any, deposit_percent: int = 30, item_labels: dict[s
         due_now = max(0, total - benefits_now)
     later_ids = list(f.get("funded_later_item_ids") or [])
     grants = []
+    alternatives = []
     for m in matches:
-        if m.get("funded_later"):
+        if m.get("alternative_to_pay_now"):
+            ids = list(m.get("covered_item_ids") or [])
+            alternatives.append({"program_id": m.get("program_id", ""), "name": m["name"], "amount_cents": m["amount_cents"],
+                                 "item_ids": ids, "items": [item_label(i, labels) for i in ids]})
+        elif m.get("funded_later"):
             ids = list(m.get("covered_item_ids") or later_ids)
             grants.append({"name": m["name"], "amount_cents": m["amount_cents"],
+                           "max_cents": program_max_cents(m.get("program_id", "")),
                            "item_ids": ids, "items": [item_label(i, labels) for i in ids]})
     grant_cents = sum(g["amount_cents"] for g in grants)
     family_after_all = f.get("family_share_cents")
@@ -303,7 +310,7 @@ def funding_summary(funding: Any, deposit_percent: int = 30, item_labels: dict[s
     return {
         "total_cents": total, "benefits_now_cents": benefits_now, "due_now_cents": due_now,
         "today_item_ids": today_ids, "today_items": [item_label(i, labels) for i in today_ids],
-        "later_item_ids": later_ids, "grants": grants, "grant_cents": grant_cents,
+        "later_item_ids": later_ids, "grants": grants, "grant_cents": grant_cents, "alternatives": alternatives,
         "grant_names": [g["name"] for g in grants],
         "family_after_all_cents": family_after_all, "deposit_percent": deposit_percent,
         "deposit_cents": deposit, "balance_cents": due_now - deposit,
@@ -320,9 +327,30 @@ def today_line(summary: dict) -> str:
             f"{summary['deposit_percent']}% deposit {usd(summary['deposit_cents'])}")
 
 
+def alternative_lines(summary: dict) -> list[str]:
+    # Grants generally don't pay back finished work, so the choice has to be made before anything is charged.
+    return [f"Can wait for approval? {a['name']} may cover these items instead: {', '.join(a['items'])}. "
+            "Nothing is charged if you wait, but it will not pay back work done before approval."
+            for a in summary["alternatives"]]
+
+
+def program_max_cents(program_id: str) -> int | None:
+    try:
+        programs = json.loads(PROGRAMS_PATH.read_text())["programs"]
+    except (OSError, ValueError, KeyError):
+        return None
+    return next((p.get("max_cents") for p in programs if p.get("id") == program_id), None)
+
+
 def grant_lines(summary: dict) -> list[str]:
-    return [f"After grant approval: {', '.join(g['items']) or 'the full remodel'} funded by {g['name']} "
-            f"(up to {usd(g['amount_cents'])}, approval not guaranteed)" for g in summary["grants"]]
+    """The amount is the cost this grant covers, not the program's limit, so the limit is named separately."""
+    lines = []
+    for g in summary["grants"]:
+        items = ", ".join(g["items"]) or "full remodel"
+        cap = f"program max {usd(g['max_cents'])}, " if g.get("max_cents") else ""
+        lines.append(f"After grant approval: {g['name']} covers the {usd(g['amount_cents'])} {items[0].lower() + items[1:]} "
+                     f"({cap}approval not guaranteed)")
+    return lines
 
 
 def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: int = 30,
@@ -341,26 +369,63 @@ def funding_card(session_id: str, quote_id: str, funding: Any, deposit_percent: 
         {"type": "text", "value": today_line(m_sum), "style": "emphasis"},
     ]
     children += [{"type": "text", "value": line} for line in grant_lines(m_sum)]
+    children += [{"type": "text", "value": line, "style": "emphasis"} for line in alternative_lines(m_sum)]
     children.append({"type": "heading", "value": "Programs that match" if matches else "No program matched", "level": 3})
     if matches:
         children.append({"type": "list", "items": [
             {"children": [
                 {"type": "text", "value": m["name"], "style": "emphasis"},
-                {"type": "badge", "label": f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") else usd(m["amount_cents"]), "variant": "success"},
-                {"type": "badge", "label": "After approval" if m.get("funded_later") else "Applied today", "variant": "warning" if m.get("funded_later") else "info"},
+                {"type": "badge", "label": f"Up to {usd(m['amount_cents'])}" if m.get("funded_later") or m.get("alternative_to_pay_now") else usd(m["amount_cents"]), "variant": "success"},
+                {"type": "badge", "label": _track_label(m), "variant": "info" if _track_label(m) == "Applied today" else "warning"},
                 {"type": "text", "value": m.get("next_step") or "", "style": "body"},
                 {"type": "text", "value": f"Source: {m['source_url']} (as of {m['as_of']})", "style": "muted"},
             ]} for m in matches
         ]})
     children.append({"type": "text", "value": "Eligibility is checked with fixed rules from each program's official page.", "style": "muted"})
     ids = {"quote_id": quote_id}
-    children.append({"type": "group", "direction": "row", "gap": 8, "children": [
-        {"type": "button", "label": "Continue", "primary": True,
-         "action": {"selection": _sel("accept_funding", session_id, prepare_packet="no", **ids)}},
-        {"type": "button", "label": "Continue and prepare the grant packet",
-         "action": {"selection": _sel("accept_funding", session_id, prepare_packet="yes", **ids)}},
-    ]})
+    alt = m_sum["alternatives"][0] if m_sum["alternatives"] else None
+    buttons = [{"type": "button", "label": "Fix it now" if alt else "Continue", "primary": True,
+                "action": {"selection": _sel("accept_funding", session_id, choice="fix_now", prepare_packet="no", **ids)}}]
+    if m_sum["grants"]:
+        buttons.append({"type": "button", "label": "Fix it now and prepare the grant packet" if alt else "Continue and prepare the grant packet",
+                        "action": {"selection": _sel("accept_funding", session_id, choice="fix_now", prepare_packet="yes", **ids)}})
+    if alt:
+        short = "PICF" if alt["program_id"].startswith("picf") else alt["name"]
+        buttons.append({"type": "button", "label": f"Wait for {short}",
+                        "action": {"selection": _sel("accept_funding", session_id, choice="wait_picf", program_id=alt["program_id"], **ids)}})
+    children.append({"type": "group", "direction": "row", "gap": 8, "children": buttons})
     return "custom", {"root": {"type": "section", "title": "Help paying for it", "children": children}}
+
+
+def _track_label(m: dict) -> str:
+    if m.get("alternative_to_pay_now"):
+        return "Alternative, after approval"
+    return "After approval" if m.get("funded_later") else "Applied today"
+
+
+def wait_for_program_card(session_id: str, program: dict, item_labels: list[str]) -> tuple[str, dict]:
+    """Terminal: the family chose to wait for an alternative program (e.g. PICF). Nothing is charged.
+
+    program is the record from data/programs.json; the checklist only restates its published rules."""
+    checklist = []
+    if program.get("min_age"):
+        checklist.append(f"Someone in the household is {program['min_age']} or older")
+    if program.get("area_rule") == "la_county":
+        checklist.append("The home is in Los Angeles County")
+    if "renter" in program.get("tenure", []):
+        checklist.append("Owners and renters can apply (renters: tell the landlord about the changes)")
+    if program.get("income_rule"):
+        checklist.append("Household income documents (an income limit applies)")
+    checklist.append(f"The fixes from this plan: {', '.join(item_labels)}")
+    return "custom", {"root": {"type": "section", "title": f"Waiting for {program['name']}",
+                               "subtitle": "Nothing has been charged", "children": [
+        {"type": "text", "value": "Rooted prepared your application checklist:", "style": "emphasis"},
+        {"type": "list", "items": [{"children": [{"type": "text", "value": c}]} for c in checklist]},
+        {"type": "heading", "value": "Next step", "level": 3},
+        {"type": "text", "value": program.get("next_step") or "Contact the program to apply."},
+        {"type": "text", "value": "Approval is not guaranteed. If the program declines, say \"start over\" to fix it now instead.", "style": "muted"},
+        _source_text(program["name"], program["source_url"]),
+    ]}}
 
 
 # ---- 8. plan review (review) -----------------------------------------------
@@ -437,27 +502,35 @@ def stripe_metadata(publishable_key: str, client_secret: str, checkout_session_i
     }
 
 
-def payment_status_card(session_id: str, payers: list[dict]) -> tuple[str, dict]:
-    """Informational (terminal): payers = [{name, amount_cents, paid}]. Payment itself is RequestPayment."""
+def payment_status_card(session_id: str, payers: list[dict], title: str = "Deposit payments") -> tuple[str, dict]:
+    """Informational (terminal): payers = [{name, amount_cents, paid}]; payer 0 is the person in this chat.
+
+    Only payer 0 gets a Stripe checkout here; the other shares stay "Pending" and are never shown as paid."""
     paid = sum(1 for p in payers if p.get("paid"))
-    return "custom", {"root": {"type": "section", "title": "Deposit payments",
+    others = [p["name"] for p in payers[1:] if not p.get("paid")]
+    note = (f"Your checkout is in this chat. {', '.join(others)} get{'s' if len(others) == 1 else ''} "
+            "a payment request when they message Rooted." if others else "Your checkout is in this chat.")
+    return "custom", {"root": {"type": "section", "title": title,
                                "subtitle": f"{paid} of {len(payers)} paid", "children": [
         {"type": "list", "items": [
             {"children": [
                 {"type": "text", "value": f"{p['name']}: {usd(p['amount_cents'])}"},
-                {"type": "badge", "label": "Paid" if p.get("paid") else "Waiting", "variant": "success" if p.get("paid") else "warning"},
-            ]} for p in payers
+                {"type": "badge", "label": "Paid" if p.get("paid") else ("Waiting for you" if i == 0 else "Pending"),
+                 "variant": "success" if p.get("paid") else "warning"},
+            ]} for i, p in enumerate(payers)
         ]},
-        {"type": "text", "value": "Each payer gets a secure Stripe checkout in their own chat.", "style": "muted"},
+        {"type": "text", "value": note, "style": "muted"},
     ]}}
 
 
 # ---- 12. booking confirmed (custom, terminal) ------------------------------
 
 def booking_card(session_id: str, booking_id: str, contractor_name: str, date: str,
-                 deposit_cents: int, balance_cents: int) -> tuple[str, dict]:
+                 deposit_cents: int, balance_cents: int, pending: list[dict] | None = None) -> tuple[str, dict]:
+    """deposit_cents is what was actually paid; pending = [{name, amount_cents}] shares not paid yet."""
+    pending = pending or []
     steps = [
-        ("Deposit paid", usd(deposit_cents), "success"),
+        ("Deposit paid" if not pending else "Your deposit share paid", usd(deposit_cents), "success"),
         (f"Install on {date}", contractor_name, "info"),
         ("Completion check", "photos of the finished work", "info"),
         ("Balance", f"{usd(balance_cents)} after the check passes", "warning"),
@@ -470,6 +543,8 @@ def booking_card(session_id: str, booking_id: str, contractor_name: str, date: s
                 {"type": "text", "value": detail, "style": "muted"},
             ]} for i, (label, detail, variant) in enumerate(steps, 1)
         ]},
+        *[{"type": "text", "value": f"{p['name']}'s {usd(p['amount_cents'])} deposit share is still pending.", "style": "emphasis"}
+          for p in pending],
         {"type": "text", "value": "The plan is ready to share with an occupational therapist.", "style": "muted"},
     ]}}
 
@@ -495,7 +570,7 @@ _ACTION_PHRASES: list[tuple[str, str]] = [
     ("pick_bathroom", r"pick_bathroom|bathroom_id|\bbathroom b\d+"),
     ("get_quotes", r"get_quotes|get (3 |three )?quotes"),
     ("pick_quote", r"picked (the )?quote|chose (the )?quote"),
-    ("accept_funding", r"accept_funding|prepare_packet"),
+    ("accept_funding", r"accept_funding|prepare_packet|fix_now|wait_picf|fix it now|wait for (the )?picf"),
     ("decline", r"\bdecline[ds]?\b|not yet|does not (agree|consent)"),
     ("consent", r"\bconsent(s|ed)?\b|\bagrees?\b"),
     ("cancel", r"\bcancel(s|led|ed)?\b"),
@@ -556,6 +631,12 @@ def _parse_prose(text: str) -> dict | None:
         sel["scope"] = m.group(1)
     if m := re.search(r"\bpart\D{0,3}([12])\b", lowered):
         sel["part"] = m.group(1)
+    if m := re.search(r"\b(fix_now|wait_picf)\b", lowered):
+        sel["choice"] = m.group(1)
+    elif action == "accept_funding":
+        sel["choice"] = "wait_picf" if re.search(r"\bwait (for )?(the )?picf\b", lowered) else "fix_now"
+    if m := re.search(r"\bprogram_id\W+([a-z0-9_]+)", lowered):
+        sel["program_id"] = m.group(1)
     if m := re.search(r"prepare_packet\W+(yes|no)\b", lowered):
         sel["prepare_packet"] = m.group(1)
     elif action == "accept_funding":
@@ -628,6 +709,10 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
              "covered_item_ids": ["grab_bar_tub", "grab_bar_toilet"],
              "source_url": "https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf",
              "as_of": "2026-10-17", "next_step": "Sample plan. Call the plan to confirm the benefit.", "funded_later": False},
+            {"program_id": "picf_hud_home_modification", "name": "PICF HUD Older Adults Home Modification Program",
+             "amount_cents": 58_550, "covered_item_ids": [f["id"] for f in fixes], "source_url": "https://www.picf.org/individuals-caregivers/",
+             "as_of": "2026-10-17", "next_step": "Submit the HUD Older Adults Home Modification Program Request Form.",
+             "funded_later": True, "alternative_to_pay_now": True},
             {"program_id": "lacda_senior_grant", "name": "LACDA Senior Grant", "amount_cents": 300_000,
              "covered_item_ids": ["tub_to_shower"],
              "source_url": "https://lacda.org/home-improvements/senior-grant-program",
@@ -652,13 +737,19 @@ def sample_cards(session_id: str = "3f2b8c1e-5d4a-4e6f-9a7b-1c2d3e4f5a6b") -> di
         "09_consent": consent_card(session_id, "q_mesa_1", "Maria", labels, "2026-10-19"),
         "10_split": split_card(session_id, "q_mesa_1", funding),
         "11_payment_status": payment_status_card(session_id, [
-            {"name": "Sofia", "amount_cents": 8_783, "paid": True}, {"name": "Leo", "amount_cents": 8_782, "paid": False}]),
-        "12_booking": booking_card(session_id, "bk_mesa_7f3a", "Mesa Handyworks", "2026-10-19", 17_565, 40_985),
+            {"name": "You", "amount_cents": 8_783, "paid": True}, {"name": "Leo", "amount_cents": 8_782, "paid": False}]),
+        "12_booking": booking_card(session_id, "bk_mesa_7f3a", "Mesa Handyworks", "2026-10-19", 8_783, 40_985,
+                                   [{"name": "Leo", "amount_cents": 8_782}]),
+        "07b_wait_picf": wait_for_program_card(session_id, _program("picf_hud_home_modification"), labels),
         "13_completion": completion_card(session_id, "bk_mesa_7f3a", "assets/bathrooms/b1_after.png", 40_985),
     }
 
 
-TERMINAL_SAMPLES = {"03b_low_risk", "11_payment_status", "12_booking", "13_completion"}
+def _program(program_id: str) -> dict:
+    return next(p for p in json.loads(PROGRAMS_PATH.read_text())["programs"] if p["id"] == program_id)
+
+
+TERMINAL_SAMPLES = {"07b_wait_picf", "03b_low_risk", "11_payment_status", "12_booking", "13_completion"}
 
 
 def dump_samples(out_dir: Path = ROOT / "out" / "cards") -> list[Path]:

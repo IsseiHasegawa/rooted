@@ -1,7 +1,8 @@
 """Session state machine for rooted-orchestrator.
 
 INTAKE -> STEADI_1 -> STEADI_2 -> RISK_RESULT -> PICK_BATHROOM -> RENDER -> QUOTES -> FUNDING
--> REVIEW -> CONSENT -> SPLIT -> PAY -> BOOKED, plus the terminal LOW_RISK / CANCELLED / DECLINED.
+-> REVIEW -> CONSENT -> SPLIT -> PAY -> BOOKED -> BALANCE -> DONE (payments in billing.py),
+plus the terminal LOW_RISK / CANCELLED / DECLINED.
 Each state names the card the user is looking at; the matching selection moves to the next state.
 """
 import asyncio
@@ -33,7 +34,7 @@ from shared.models import (
 from shared.runtime import CONTRACTOR_KEYS, ROOT, address_of, message_text, text_message
 
 DEPOSIT_PERCENT = 30
-TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 20, "chart": 10}
+TIMEOUTS = {"risk": 15, "visualizer": 40, "funding": 15, "contractor": 15, "chart": 10}
 
 PRICES = {p["id"]: p for p in json.loads((ROOT / "data" / "prices.json").read_text())["items"]}
 BATHROOMS = [
@@ -41,6 +42,7 @@ BATHROOMS = [
     for i, label in enumerate(["Tub with shower", "Step-in shower", "Small bathroom", "Rug and clutter", "Dim bathroom"], 1)
 ]
 CONTRACTORS = {c["id"]: c for c in json.loads((ROOT / "data" / "contractors.json").read_text())["contractors"]}
+PROGRAMS = {p["id"]: p for p in json.loads((ROOT / "data" / "programs.json").read_text())["programs"]}
 FULL_REMODEL_ITEMS = [p["id"] for p in PRICES.values() if p["scope"] == "full"]
 RESTART = re.compile(r"\b(start over|restart|new plan|reset)\b", re.I)
 
@@ -58,7 +60,8 @@ EXPECTED = {
     "CONSENT": {"consent", "decline"},
     "SPLIT": {"submit_split"},
 }
-TERMINAL = {"LOW_RISK", "CANCELLED", "DECLINED", "PAY", "BOOKED"}
+TERMINAL = {"LOW_RISK", "CANCELLED", "DECLINED", "WAITING_GRANT", "DONE"}
+PAYING = {"PAY", "BOOKED", "BALANCE"}  # chat in these states goes to billing instead of the card flow
 
 
 # ---- storage ---------------------------------------------------------------
@@ -338,12 +341,30 @@ def _plan(s: dict) -> dict:
 
 
 async def on_accept_funding(ctx: Context, s: dict, sel: dict) -> None:
+    if sel.get("choice") == "wait_picf":
+        await on_wait_for_program(ctx, s, sel)
+        return
     s["data"]["prepare_packet"] = sel.get("prepare_packet") == "yes"
     p = _plan(s)
     await show(ctx, s, "Please review the plan.", cards.plan_review_card(
         s["session_id"], p["quote"]["quote_id"], p["items"], p["quote"]["contractor_name"], p["quote"]["earliest_date"],
         s["data"]["funding"], DEPOSIT_PERCENT))
     transition(ctx, s, "REVIEW")
+
+
+async def on_wait_for_program(ctx: Context, s: dict, sel: dict) -> None:
+    """The family waits for an alternative program (PICF) instead of paying today: no payment, flow ends."""
+    alts = [m for m in s["data"]["funding"].get("matches", []) if m.get("alternative_to_pay_now")]
+    match = next((m for m in alts if m.get("program_id") == sel.get("program_id")), alts[0] if alts else None)
+    program = PROGRAMS.get((match or {}).get("program_id") or sel.get("program_id", ""))
+    if program is None:
+        await resend_card(ctx, s, "That program isn't available for this plan. Please pick another option.")
+        return
+    items = [PRICES[i]["label"] for i in (match or {}).get("covered_item_ids", []) if i in PRICES]
+    await show(ctx, s, f"Okay, nothing is charged. Here is what {program['name']} needs.",
+               cards.wait_for_program_card(s["session_id"], program, items or [PRICES[i]["label"] for i in s["data"]["item_ids"] if i in PRICES]),
+               terminal=True)
+    transition(ctx, s, "WAITING_GRANT")
 
 
 async def on_review(ctx: Context, s: dict, sel: dict) -> None:
@@ -384,15 +405,13 @@ async def on_split(ctx: Context, s: dict, sel: dict) -> None:
     p = _plan(s)
     percents = [_int(x) for x in re.findall(r"\d+", str(sel.get("custom_percents") or ""))] if sel.get("split") == "custom" else None
     shares = split_shares(p["deposit"], _int(sel.get("payers"), 1), percents)
-    contacts = [c.strip() for c in str(sel.get("payer_contacts") or "").split(",") if c.strip()]
-    s["data"]["payers"] = [
-        {"name": "You" if i == 0 else (contacts[i - 1] if i - 1 < len(contacts) else f"Payer {i + 1}"),
-         "amount_cents": amount, "paid": False}
-        for i, amount in enumerate(shares)
-    ]
-    save(ctx, s)
-    await show(ctx, s, "Payment requests are on their way.", cards.payment_status_card(s["session_id"], s["data"]["payers"]), terminal=True)
-    transition(ctx, s, "PAY")
+    contacts = [c.strip().lstrip("@") for c in str(sel.get("payer_contacts") or "").split(",") if c.strip()]
+    names = ["You"] + [contacts[i] if i < len(contacts) else f"Payer {i + 2}" for i in range(len(shares) - 1)]
+    s["data"]["plan_title"] = f"{s['data']['intake']['parent_name']}'s home safety plan"
+    s["data"]["split_percents"] = percents if percents and len(percents) == len(shares) and sum(percents) == 100 else None
+    from agents.orchestrator import billing
+
+    await billing.start_deposits(ctx, s, shares, names)
 
 
 HANDLERS = {
@@ -413,6 +432,8 @@ HANDLERS = {
 # ---- entry point -----------------------------------------------------------
 
 async def handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
+    from agents.orchestrator import billing
+
     text = message_text(msg)
     sel = parse(text)
     session_id = (sel or {}).get("session_id")
@@ -425,6 +446,9 @@ async def handle_chat(ctx: Context, sender: str, msg: ChatMessage) -> None:
     if s is None or s["state"] in TERMINAL or RESTART.search(text):
         s = new_session(ctx, sender, str(ctx.session))
         await start(ctx, s)
+        return
+    if s["state"] in PAYING:
+        await billing.on_owner_text(ctx, s, sender, text)
         return
     expected = EXPECTED.get(s["state"], set())
     if not sel or sel.get("action") not in expected:

@@ -29,7 +29,7 @@ Everything happens in the chat. Each card returns a selection that decides the n
 3. Risk result with top hazards and the CDC source
 4. Pick the bathroom image that looks most like the parent's
 5. After image with numbered markers, list of fixes, scope (urgent safety fixes or full remodel)
-6. Three contractor quotes (if one does not answer in 20 s, the chat explains and compares the rest)
+6. Three contractor quotes (if one does not answer in 15 s, the chat explains and compares the rest)
 7. Funding match with sources, and the option to prepare a grant application packet
 8. Plan review, then the parent's consent
 9. Split setup, then one Stripe payment request per payer (Agent Payment Protocol)
