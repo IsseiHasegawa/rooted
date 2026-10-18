@@ -64,8 +64,9 @@ def _item_cost(item) -> int:
 
 def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
     data = data or load_data()
-    # Insurance first (non-structural only), then grants in file order.
-    programs = sorted(data["programs"], key=lambda p: 0 if p["kind"] == "insurance" else 1)
+    # Insurance benefit first (reduces what is due now), then grants that take urgent items (scope "any"),
+    # then grants limited to the full remodel (scope "full").
+    programs = sorted(data["programs"], key=lambda p: 0 if p["kind"] == "insurance" else (1 if p["scope"] == "any" else 2))
 
     scopes = load_scopes()
     remaining = {i.id: _item_cost(i) for i in req.line_items}
@@ -88,8 +89,8 @@ def allocate(req: FundingRequest, data: dict | None = None) -> FundingResult:
                 continue
             if item.structural and not prog["structural_ok"]:
                 continue
-            # Urgent safety items are paid today; only the full remodel waits for a grant.
-            if prog["funded_later"] and scopes.get(item.id, "urgent") == "urgent":
+            # Full-scope grants (LACDA, NHS) only take the full remodel; urgent items stay with the family.
+            if prog["scope"] == "full" and scopes.get(item.id, "urgent") == "urgent":
                 continue
             take = min(cap, remaining[item.id])
             remaining[item.id] -= take

@@ -185,7 +185,8 @@
         "townhome"
       ],
       "effective": "2026-06-01",
-      "verified_note": "Age 62+, 80% AMI table, 12 months owned as primary residence, districts 1/2/4/5 community lists and $20,000 max read on the page. Covered work also includes deferred maintenance (roof, plumbing, electrical, heating), not modeled. The page's property type is not checked by the engine."
+      "verified_note": "Age 62+, 80% AMI table, 12 months owned as primary residence, districts 1/2/4/5 community lists and $20,000 max read on the page. Covered work also includes deferred maintenance (roof, plumbing, electrical, heating), not modeled. The page's property type is not checked by the engine.",
+      "scope": "full"
     },
     {
       "id": "nhs_la_county_minor_repair",
@@ -212,7 +213,8 @@
       "source_url": "https://www.nhslacounty.org/affordable-lending-and-grant-services/senior-home-repair-grants-program-los-angeles/",
       "as_of": "2026-10-17",
       "verified": false,
-      "verified_note": "Page returns 403 to our fetcher. $5,600, age 62+, LA County, homeowner living on premises, income-qualified (no limit published), OT home assessment and a required orientation workshop confirmed only via search excerpts of the page and its FAQ PDF."
+      "verified_note": "Page returns 403 to our fetcher. $5,600, age 62+, LA County, homeowner living on premises, income-qualified (no limit published), OT home assessment and a required orientation workshop confirmed only via search excerpts of the page and its FAQ PDF.",
+      "scope": "full"
     },
     {
       "id": "picf_hud_home_modification",
@@ -239,7 +241,8 @@
       "source_url": "https://www.picf.org/individuals-caregivers/",
       "as_of": "2026-10-17",
       "verified": true,
-      "verified_note": "Age 62+, LA County, owners and renters, household income at or below 80% AMI (same 2026 limits), modification examples read on the Individuals & Caregivers page. The page states no maximum amount and no funding period (the earlier 2024-2027 claim is not on the page)."
+      "verified_note": "Age 62+, LA County, owners and renters, household income at or below 80% AMI (same 2026 limits), modification examples read on the Individuals & Caregivers page. The page states no maximum amount and no funding period (the earlier 2024-2027 claim is not on the page).",
+      "scope": "any"
     },
     {
       "id": "sample_ma_plan_a",
@@ -267,7 +270,8 @@
       "source_url": "https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf",
       "as_of": "2018-04-27",
       "verified": false,
-      "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative."
+      "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative.",
+      "scope": "any"
     },
     {
       "id": "sample_ma_plan_b",
@@ -294,7 +298,8 @@
       "source_url": "https://www.hhs.gov/guidance/sites/default/files/hhs-guidance-documents/hpms%2520memo%2520primarily%2520health%2520related%25204-27-18_90.pdf",
       "as_of": "2018-04-27",
       "verified": false,
-      "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative."
+      "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative.",
+      "scope": "any"
     }
   ]
 }
