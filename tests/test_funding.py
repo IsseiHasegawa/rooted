@@ -43,14 +43,20 @@ def ids(res):
     return {m.program_id: m for m in res.matches}
 
 
-def test_maria_picf_takes_urgent_items_lacda_takes_full_remodel():
+def test_maria_urgent_due_now_grants_never_reduce_it():
     res = allocate(req())
     m = ids(res)
-    assert set(m["picf_hud_home_modification"].covered_item_ids) == {"grab_bar_tub", "grab_bar_toilet"}
     assert set(m["lacda_senior_grant"].covered_item_ids) == {"non_slip_flooring", "tub_to_shower"}
-    assert res.pay_now_item_ids == []
-    assert res.pay_now_cents == 0  # everything waits for a grant when there is no insurance benefit
-    assert res.family_share_cents == 0
+    assert res.funded_later_item_ids == ["non_slip_flooring", "tub_to_shower"]
+    assert res.pay_now_item_ids == ["grab_bar_tub", "grab_bar_toilet"]
+    assert res.pay_now_cents == 60_000
+    picf = m["picf_hud_home_modification"]
+    assert picf.alternative_to_pay_now and picf.funded_later
+    assert set(picf.covered_item_ids) == {"grab_bar_tub", "grab_bar_toilet"}
+    assert "reimburse" in picf.next_step  # grants do not repay work already done
+    # PICF is an alternative: it is not counted in coverage or the family share.
+    assert res.covered_cents == m["lacda_senior_grant"].amount_cents
+    assert res.family_share_cents == 60_000
 
 
 def test_pay_now_ma_plan_first_then_uncovered_urgent_items():
@@ -72,20 +78,23 @@ def test_pay_now_maria_full_scope_with_arbor_and_ma_plan_a():
     m = ids(res)
     assert res.total_cents == 664_600
     assert m["sample_ma_plan_a"].amount_cents == 50_000 and not m["sample_ma_plan_a"].funded_later
-    assert m["picf_hud_home_modification"].amount_cents == 128_300
     assert m["lacda_senior_grant"].amount_cents == 449_300
+    assert m["picf_hud_home_modification"].alternative_to_pay_now
     assert "tub_to_shower" in res.funded_later_item_ids and "tub_to_shower" not in res.pay_now_item_ids
-    assert res.pay_now_cents == 37_000
-    assert res.family_share_cents == 37_000
+    # Urgent items ($2,153) minus the plan's $500; no grant reduces it.
+    assert res.pay_now_cents == 165_300
+    assert round(res.pay_now_cents * 0.30) == 49_590
+    assert res.family_share_cents == 165_300  # total - MA - LACDA
 
 
 def test_pay_now_pasadena_renter():
     res = allocate(req(community="Pasadena", tenure="renter", months_owned=0))
     m = ids(res)
-    assert set(m) == {"picf_hud_home_modification"}  # PICF takes the grab bars; no LACDA or NHS for a renter
-    assert set(m["picf_hud_home_modification"].covered_item_ids) == {"grab_bar_tub", "grab_bar_toilet"}
-    assert res.funded_later_item_ids == ["grab_bar_tub", "grab_bar_toilet"]
-    assert res.pay_now_cents == 74_400 + 300_000  # flooring and tub-to-shower have no program for a renter
+    assert set(m) == {"picf_hud_home_modification"}  # no LACDA or NHS for a renter
+    assert m["picf_hud_home_modification"].alternative_to_pay_now
+    assert res.funded_later_item_ids == []
+    assert res.pay_now_cents == 60_000  # urgent grab bars; PICF never lowers it
+    assert res.family_share_cents == res.total_cents  # nothing counted: PICF is an alternative
 
 
 def test_money_adds_up_and_sources_present():

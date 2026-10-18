@@ -98,6 +98,7 @@ class ProgramMatch(Model):
     as_of: str
     next_step: str = ""
     funded_later: bool = False  # True when money arrives only after a grant application
+    alternative_to_pay_now: bool = False  # may cover due-now items only after approval; never reduces pay_now_cents
 
 
 class FundingResult(Model):

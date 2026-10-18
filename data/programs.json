@@ -186,7 +186,8 @@
       ],
       "effective": "2026-06-01",
       "verified_note": "Age 62+, 80% AMI table, 12 months owned as primary residence, districts 1/2/4/5 community lists and $20,000 max read on the page. Covered work also includes deferred maintenance (roof, plumbing, electrical, heating), not modeled. The page's property type is not checked by the engine.",
-      "scope": "full"
+      "scope": "full",
+      "alternative_to_pay_now": false
     },
     {
       "id": "nhs_la_county_minor_repair",
@@ -214,7 +215,8 @@
       "as_of": "2026-10-17",
       "verified": false,
       "verified_note": "Page returns 403 to our fetcher. $5,600, age 62+, LA County, homeowner living on premises, income-qualified (no limit published), OT home assessment and a required orientation workshop confirmed only via search excerpts of the page and its FAQ PDF.",
-      "scope": "full"
+      "scope": "full",
+      "alternative_to_pay_now": false
     },
     {
       "id": "picf_hud_home_modification",
@@ -237,12 +239,13 @@
       ],
       "structural_ok": false,
       "funded_later": true,
-      "next_step": "PICF states no maximum amount. Submit the HUD Older Adults Home Modification Program Request Form; an assessment sets the work.",
+      "next_step": "Optional alternative if the family can wait for approval before the work: PICF may cover these items instead. Grants do not reimburse work already paid for. PICF states no maximum amount; submit the HUD Older Adults Home Modification Program Request Form.",
       "source_url": "https://www.picf.org/individuals-caregivers/",
       "as_of": "2026-10-17",
       "verified": true,
       "verified_note": "Age 62+, LA County, owners and renters, household income at or below 80% AMI (same 2026 limits), modification examples read on the Individuals & Caregivers page. The page states no maximum amount and no funding period (the earlier 2024-2027 claim is not on the page).",
-      "scope": "any"
+      "scope": "any",
+      "alternative_to_pay_now": true
     },
     {
       "id": "sample_ma_plan_a",
@@ -271,7 +274,8 @@
       "as_of": "2018-04-27",
       "verified": false,
       "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative.",
-      "scope": "any"
+      "scope": "any",
+      "alternative_to_pay_now": false
     },
     {
       "id": "sample_ma_plan_b",
@@ -299,7 +303,8 @@
       "as_of": "2018-04-27",
       "verified": false,
       "verified_note": "SAMPLE plan with invented allowances. The CMS memo (April 27, 2018) expands what counts as primarily health related; its item list was not readable (HHS returns 403), so the covered items are illustrative.",
-      "scope": "any"
+      "scope": "any",
+      "alternative_to_pay_now": false
     }
   ]
 }
