@@ -126,15 +126,15 @@ def test_image_src_switchable():
     assert image_src("https://x.example/a.png") == "https://x.example/a.png"
     assert image_src("http://127.0.0.1:8080/c.png") == "http://127.0.0.1:8080/c.png"
     assert image_src("data:image/png;base64,AAAA") == "data:image/png;base64,AAAA"
-    assert image_src("assets/bathrooms/b1.png") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
-    assert image_src("assets/bathrooms/b1") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
+    assert image_src("assets/bathrooms/b1.png") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/assets/bathrooms/b1.png"
+    assert image_src("assets/bathrooms/b1") == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/assets/bathrooms/b1.png"
 
 
 def test_bathroom_picker_uses_repo_relative_assets():
     from shared.cards import bathroom_pick_card
     payload = bathroom_pick_card(SID, [{"id": "b1", "label": "Tub"}])[1]
     choice = payload["root"]["children"][0]["choices"][0]
-    assert choice["image"] == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/assets/bathrooms/b1.png"
+    assert choice["image"] == "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/assets/bathrooms/b1.png"
 
 
 def test_card_message_and_terminal_flag():

@@ -24,7 +24,7 @@ STEADI_LABEL = "Based on CDC STEADI"
 # Card Playground check #5: public https images render, so every card image is a public URL. Relative refs
 # are repo-relative (e.g. "assets/bathrooms/b1.png") and resolve against ROOTED_IMAGE_BASE_URL, the repo root
 # on GitHub raw. The visualizer builds its URLs the same way.
-IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/IsseiHasegawa/rooted/main/")
+IMAGE_BASE_URL = os.getenv("ROOTED_IMAGE_BASE_URL", "https://raw.githubusercontent.com/IsseiHasegawa/rooted/dev/")
 _ABSOLUTE_IMAGE = ("https://", "http://", "data:")
 
 ACTIONS = (
