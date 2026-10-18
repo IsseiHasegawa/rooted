@@ -404,6 +404,8 @@ async def pay(ctx: Context) -> int:
         await ctx.send(orch, text_message("/complete"))
         texts, (kind, payload) = await card_titled("Work completed")
         req = await next_payment(RequestPayment)
+        share = f"Your half: ${float(req.accepted_funds[0].amount):,.2f}; Leo's half is pending."
+        assert share in json.dumps(payload), f"completion card does not say {share!r}"
         print(f"PASS  {'COMPLETE':14s}        completion card + balance request {req.accepted_funds[0].amount} USD")
         await pay_one(ctx, orch, req, "BALANCE")
         texts = await drain_chat(3)

@@ -294,7 +294,10 @@ async def complete(ctx: Context, s: dict) -> None:
         p["charges"]["balance"] = {"amount_cents": amount, "paid": False}
     booking = s["data"].get("booking", {})
     photo = f"assets/fallback/{s['data'].get('bathroom_id', 'b1')}/after.png"
+    even_pair = len(payers) == 2 and not s["data"].get("split_percents")
     await flow.show(ctx, s, "The work is done and passed the completion check.",
-                    cards.completion_card(sid, booking.get("booking_id", ""), photo, m["balance_cents"]), terminal=True)
+                    cards.completion_card(sid, booking.get("booking_id", ""), photo, m["balance_cents"],
+                                          shares[0], [p["name"] for p in payers[1:]], "half" if even_pair else "share"),
+                    terminal=True)
     flow.transition(ctx, s, "BALANCE")
     await request_charge(ctx, s, "balance", s["sender"])

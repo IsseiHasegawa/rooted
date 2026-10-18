@@ -29,6 +29,8 @@ CACHE = ROOT / "assets" / "cache"
 CHARTS = ROOT / "assets" / "charts"
 
 MODEL = "gemini-2.5-flash-image"
+# Waterfall text sizes: the chart is shown scaled down in a chat card, so labels need to be large.
+VALUE_FONT, LABEL_FONT, TITLE_FONT = 16, 13, 18
 GEMINI_TIMEOUT_S = 25
 FONT = "/System/Library/Fonts/Helvetica.ttc"
 
@@ -186,21 +188,22 @@ def render_waterfall(total_cents: int, covered: list[tuple[str, int]], family_sh
     fig, ax = plt.subplots(figsize=(8, 4.5), dpi=150)
     running = total_cents / 100
     ax.bar(0, running, color="#2f6f5e")
-    ax.text(0, running, f"${running:,.0f}", ha="center", va="bottom", fontsize=10)
+    ax.text(0, running, f"${running:,.0f}", ha="center", va="bottom", fontsize=VALUE_FONT)
     for i, (_, cents) in enumerate(covered, 1):
         amt = cents / 100
         running -= amt
         ax.bar(i, amt, bottom=running, color="#8fb8a8")
-        ax.text(i, running + amt, f"-${amt:,.0f}", ha="center", va="bottom", fontsize=10)
+        ax.text(i, running + amt, f"-${amt:,.0f}", ha="center", va="bottom", fontsize=VALUE_FONT)
     last = len(labels) - 1
     ax.bar(last, family_share_cents / 100, color="#d98a2b")
-    ax.text(last, family_share_cents / 100, f"${family_share_cents / 100:,.0f}", ha="center", va="bottom", fontsize=10)
+    ax.text(last, family_share_cents / 100, f"${family_share_cents / 100:,.0f}", ha="center", va="bottom", fontsize=VALUE_FONT)
     ax.set_xticks(range(len(labels)))
-    ax.set_xticklabels([textwrap.fill(l, 18) for l in labels], fontsize=8)
+    ax.set_xticklabels([textwrap.fill(l, 16) for l in labels], fontsize=LABEL_FONT)
     ax.set_yticks([])
     for s in ("top", "right", "left"):
         ax.spines[s].set_visible(False)
-    ax.set_title("Who pays for what", fontsize=13, loc="left")
+    ax.set_ylim(0, total_cents / 100 * 1.18)  # room for the value labels under the title
+    ax.set_title("Who pays for what", fontsize=TITLE_FONT, loc="left", pad=14)
     fig.tight_layout()
     fig.savefig(out)
     plt.close(fig)

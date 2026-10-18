@@ -146,7 +146,7 @@ def _prefilled(fields: list[dict], defaults: dict | None) -> list[dict]:
         if d is not None and f["kind"] == "select":
             f["options"] = sorted(f["options"], key=lambda o: o["value"] != d)
         elif d is not None:
-            f["placeholder"] = str(d)
+            f["placeholder"] = f"${int(d):,}" if f["name"] == "annual_income" else str(d)
         out.append(f)
     return out
 
@@ -163,7 +163,9 @@ def intake_card(session_id: str, insurance_options: list[dict] | None = None, de
              "options": [{"value": "owner", "label": "Owns the home"}, {"value": "renter", "label": "Rents"}]},
             {"name": "months_owned", "kind": "number", "label": "Months owned (owners; 2 years = 24)"},
             {"name": "household_size", "kind": "number", "label": "People in the household", "required": True},
-            {"name": "annual_income", "kind": "number", "label": "Household income per year (USD, approximate)", "required": True},
+            # Text, not number: ASI:One's number input cut "38000" to "3800C"; "$38,000" parses the same way.
+            {"name": "annual_income", "kind": "text", "label": "Household income per year (USD, approximate)", "required": True,
+             "placeholder": "$38,000"},
             {"name": "insurance_plan", "kind": "select", "label": "Health plan", "required": True,
              "options": insurance_options or INSURANCE_OPTIONS},
             {"name": "concern", "kind": "text", "label": "What worries you most at home?", "placeholder": "Slippery tub, dark hallway at night"},
@@ -479,31 +481,37 @@ def plan_review_card(session_id: str, quote_id: str, items: list[str], contracto
         {"label": "Today", "value": today_line(m)},
     ]
     if m["benefits_now_cents"]:
-        rows.append({"label": "Insurance benefit (applied today)", "value": f"-{usd(m['benefits_now_cents'])}"})
+        # Already subtracted in the Today line, so no minus sign: it must not read as a second deduction.
+        rows.append({"label": "Insurance benefit (already included above)", "value": usd(m["benefits_now_cents"])})
     rows.append({"label": "Balance for today's fixes", "value": f"{usd(m['balance_cents'])} after the work passes a completion check"})
     rows += [{"label": "After grant approval", "value": line.removeprefix("After grant approval: ")} for line in grant_lines(m)]
-    return "review", {
-        "title": "Review the plan",
-        "summary_rows": rows,
-        "approve_cta": {"label": "Approve plan", "primary": True, "selection": _sel("approve", session_id, **ids)},
-        "reject_cta": {"label": "Cancel", "selection": _sel("cancel", session_id, **ids)},
-    }
+    return _decision_card("Review the plan", rows,
+                          ("Approve plan", _sel("approve", session_id, **ids)), ("Cancel", _sel("cancel", session_id, **ids)))
+
+
+def _decision_card(title: str, rows: list[dict], approve: tuple[str, dict], reject: tuple[str, dict]) -> tuple[str, dict]:
+    """Summary rows with a primary approve button and a secondary reject button.
+
+    A review card's approve_cta rendered pale in ASI:One even with primary set, like the carousel's CTA."""
+    return "custom", {"root": {"type": "section", "title": title, "children": [
+        {"type": "list", "items": [{"children": [{"type": "text", "value": r["label"], "style": "muted"},
+                                                 {"type": "text", "value": r["value"], "style": "body"}]} for r in rows]},
+        {"type": "group", "direction": "row", "gap": 8, "children": [
+            {"type": "button", "label": approve[0], "primary": True, "action": {"selection": approve[1]}},
+            {"type": "button", "label": reject[0], "action": {"selection": reject[1]}},
+        ]},
+    ]}}
 
 
 # ---- 9. elder consent (review) ---------------------------------------------
 
 def consent_card(session_id: str, quote_id: str, parent_name: str, items: list[str], date: str) -> tuple[str, dict]:
     ids = {"quote_id": quote_id}
-    return "review", {
-        "title": f"{parent_name} has reviewed this plan",
-        "summary_rows": [
-            {"label": "What changes", "value": ", ".join(items)},
-            {"label": "When", "value": date},
-            {"label": "Who decides", "value": f"{parent_name}. Nothing is booked without this consent."},
-        ],
-        "approve_cta": {"label": f"{parent_name} agrees", "primary": True, "selection": _sel("consent", session_id, **ids)},
-        "reject_cta": {"label": "Not yet", "selection": _sel("decline", session_id, **ids)},
-    }
+    return _decision_card(f"{parent_name} has reviewed this plan", [
+        {"label": "What changes", "value": ", ".join(items)},
+        {"label": "When", "value": date},
+        {"label": "Who decides", "value": f"{parent_name}. Nothing is booked without this consent."},
+    ], (f"{parent_name} agrees", _sel("consent", session_id, **ids)), ("Not yet", _sel("decline", session_id, **ids)))
 
 
 # ---- 10. family split (form) -----------------------------------------------
@@ -591,12 +599,20 @@ def booking_card(session_id: str, booking_id: str, contractor_name: str, date: s
     ]}}
 
 
-def completion_card(session_id: str, booking_id: str, photo_url: str, balance_cents: int) -> tuple[str, dict]:
-    """Informational (terminal): the balance itself is a RequestPayment sent next to this card."""
+def completion_card(session_id: str, booking_id: str, photo_url: str, balance_cents: int,
+                    your_share_cents: int | None = None, pending_names: list[str] | None = None,
+                    share_word: str = "share") -> tuple[str, dict]:
+    """Informational (terminal): the balance itself is a RequestPayment sent next to this card.
+
+    With other payers, the text names this chat's share so it matches the payment amount."""
+    text = f"The remaining {usd(balance_cents)} is now due."
+    if pending_names and your_share_cents is not None:
+        pending = "; ".join(f"{n}'s {share_word} is pending" for n in pending_names)
+        text += f" Your {share_word}: {usd(your_share_cents)}; {pending}."
     return "custom", {"root": {"type": "section", "title": "Work completed", "subtitle": f"Booking {booking_id}", "children": [
         {"type": "image", "src": image_src(photo_url), "alt": "Finished bathroom", "aspect_ratio": "16:9"},
         {"type": "badge", "label": "Completion check passed", "variant": "success"},
-        {"type": "text", "value": f"The remaining {usd(balance_cents)} is now due."},
+        {"type": "text", "value": text},
     ]}}
 
 

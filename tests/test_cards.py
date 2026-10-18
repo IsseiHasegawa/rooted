@@ -265,12 +265,17 @@ def test_funding_summary_two_tracks():
     assert funding_summary(legacy)["due_now_cents"] == 374_550 - 16_000
 
 
+def review_rows(payload: dict) -> dict[str, str]:
+    rows = next(c for c in payload["root"]["children"] if c["type"] == "list")["items"]
+    return {r["children"][0]["value"]: r["children"][1]["value"] for r in rows}
+
+
 def test_two_track_wording_on_funding_review_split():
     from shared.cards import funding_card, plan_review_card, split_card
     funding = json.dumps(funding_card(SID, "q_mesa_1", FUNDING, 30, LABELS)[1])
     assert TODAY in funding and "After grant approval: " + LATER in funding
     review = plan_review_card(SID, "q_mesa_1", ["Grab bar"], "Mesa", "2026-10-19", FUNDING, 30, LABELS)[1]
-    rows = {r["label"]: r["value"] for r in review["summary_rows"]}
+    rows = review_rows(review)
     assert rows["Today"] == TODAY and rows["After grant approval"] == LATER
     for text in (funding, json.dumps(review)):
         assert "guaranteed approval" not in text.lower() and "will be approved" not in text.lower()
@@ -439,3 +444,37 @@ def test_quote_buttons_are_primary():
 def test_steadi_cards_say_how_to_answer():
     from shared.cards import steadi_card
     assert all("Tap each statement that applies." in steadi_card(SID, part)[1]["title"] for part in (1, 2))
+
+
+def test_review_and_consent_have_primary_approve_buttons():
+    from shared.cards import consent_card, plan_review_card
+    for kind, payload in (plan_review_card(SID, "q_arbor_1", ["Grab bar"], "Arbor", "2026-10-22", FUNDING, 30, LABELS),
+                          consent_card(SID, "q_arbor_1", "Maria", ["Grab bar"], "2026-10-22")):
+        approve, reject = next(c for c in payload["root"]["children"] if c["type"] == "group")["children"]
+        assert kind == "custom" and approve["primary"] is True and not reject.get("primary")
+        assert approve["label"] in ("Approve plan", "Maria agrees")
+        assert element_depth(payload["root"]) <= MAX_DEPTH
+
+
+def test_review_insurance_line_is_not_a_second_deduction():
+    from shared.cards import plan_review_card
+    rows = review_rows(plan_review_card(SID, "q_arbor_1", ["Grab bar"], "Arbor", "2026-10-22", FUNDING, 30, LABELS)[1])
+    label = "Insurance benefit (already included above)"
+    assert label in rows and not rows[label].startswith("-")
+
+
+def test_completion_card_names_this_chats_half():
+    from shared.cards import completion_card
+    text = json.dumps(completion_card(SID, "bk_arbor_1", "assets/fallback/b1/after.png", 44_341, 22_171, ["Leo"], "half"))
+    assert "The remaining $443.41 is now due. Your half: $221.71; Leo's half is pending." in text
+    alone = json.dumps(completion_card(SID, "bk_arbor_1", "assets/fallback/b1/after.png", 44_341))
+    assert "The remaining $443.41 is now due." in alone and "Your" not in alone
+
+
+def test_income_field_is_text_shown_in_dollars():
+    from shared import demo
+    from shared.cards import intake_card
+    field = next(f for f in intake_card(SID, defaults=demo.MARIA_INTAKE)[1]["fields"] if f["name"] == "annual_income")
+    assert field["kind"] == "text" and field["placeholder"] == "$38,000"
+    from agents.orchestrator.flow import _int
+    assert _int("$38,000") == 38_000
