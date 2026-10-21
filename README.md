@@ -3,9 +3,11 @@
 ![tag:innovationlab](https://img.shields.io/badge/innovationlab-3D8BD3)
 ![tag:hackathon](https://img.shields.io/badge/hackathon-5F43F1)
 
-**Help aging parents stay safe at home, from fall-risk check to a booked, paid contractor, in one ASI:One chat.**
+**From "I'm worried about Mom's bathroom" to a funded, booked home-safety fix, in one ASI:One chat.**
 
-Rooted runs entirely inside an ASI:One chat, using the Agent Chat Protocol, ASI:One Interactive Cards and the Agent Payment Protocol.
+Rooted is a team of seven AI agents that helps families make an aging parent's home safer. It runs entirely inside ASI:One, using the Agent Chat Protocol, ASI:One Interactive Cards and the Agent Payment Protocol. There is no separate app to install.
+
+Built at LA Hacks 2026 by Issei Hasegawa and Gabriel Saccoccio.
 
 ## The problem
 
@@ -13,29 +15,29 @@ Rooted runs entirely inside an ASI:One chat, using the Agent Chat Protocol, ASI:
 - 75% of adults 50 and older want to stay in their current home for as long as possible ([AARP 2024 Home and Community Preferences](https://www.aarp.org/pri/topics/livable-communities/housing/2024-home-community-preferences/)).
 - A private nursing-home room costs a national median of $129,575 a year ([CareScout Cost of Care 2025](https://www.carescout.com/cost-of-care)).
 
-Families who want to keep a parent at home face four separate questions: how risky is the home, what should change, who will do it at a fair price, and who pays. Today each one means a different website, phone call or form. Rooted answers all four in one conversation.
+A family that wants to keep a parent at home has to answer four questions: How risky is the home? What should change? Who will do the work at a fair price? Who pays? Today each answer means a different website, phone call or form. Rooted answers all four in one conversation.
 
 ## The journey, with Maria
 
 Maria is 82, owns her home in East Los Angeles and lives alone. Her daughter opens a chat with Rooted.
 
-1. **About Maria.** A short form: age, community, owner or renter, household size, income, health plan, main worry.
-2. **Fall-risk check.** The CDC STEADI 12-question screening, scored by fixed rules. Maria has fallen in the past year, so she is at risk, and Rooted names the top hazards from the CDC home-safety checklist.
-3. **What would change.** The daughter picks the bathroom layout closest to Maria's, or attaches a photo of the real one. Rooted shows it with the fixes added and a numbered fix list.
-4. **Three quotes.** Three contractor agents quote in parallel. Rooted asks the CAPS-certified one to match the lowest price once: Arbor comes down from $5,725 to $5,267 for the full remodel.
-5. **Who pays.** Fixed rules over published program pages: Maria's health plan covers $500 of the urgent fixes now, and the LACDA Senior Grant may cover the remodel work after approval (approval is not guaranteed). That leaves $633 due today.
-6. **Review and consent.** The daughter approves the plan, then Maria sees it and agrees. Nothing is booked without her consent.
+1. **About Maria.** A short form: age, community, owner or renter, household size, income, health plan and main worry.
+2. **Fall-risk check.** The CDC STEADI 12-question screening, scored by fixed rules. Maria fell in the past year, so she is at risk. Rooted lists her top hazards from the CDC home-safety checklist.
+3. **What would change.** The daughter attaches a photo of Maria's bathroom, or picks the closest layout. Rooted shows the same room with the fixes added, plus a numbered fix list.
+4. **Three quotes.** Three contractor agents quote in parallel. Rooted asks the CAPS-certified contractor to match the lowest price, and Arbor drops from $5,725 to $5,267 for the full remodel.
+5. **Who pays.** Fixed rules over published program pages: Maria's health plan covers $500 of the urgent fixes now, and the LACDA Senior Grant may cover the remodel after approval (not guaranteed). That leaves $633.44 due today.
+6. **Review and consent.** The daughter approves the plan, then Maria reviews it and agrees. Nothing is booked without her consent.
 7. **Split and pay.** The 30% deposit ($190.03) is split with Leo, another family member. The daughter pays her half with Stripe inside the chat, and the contractor is booked.
-8. **After the work.** Once the work passes a completion check, Rooted asks for the remaining balance the same way.
+8. **After the work.** Once the work passes a completion check, Rooted collects the remaining balance the same way.
 
-Rooted lowers fall rates for people who are already at high risk by fixing the home, and it produces a plan an occupational therapist can review. It does not replace an occupational therapist.
+Home modifications lower fall rates for people who are already at high risk. Rooted makes those fixes easier to plan, fund and book, and produces a plan an occupational therapist can review. It does not replace an occupational therapist.
 
 ## Why it fits the ASI:One Agent Challenge
 
-- **Multi-agent orchestration.** Seven agents on Agentverse: an orchestrator that owns the chat and session state, plus risk, visualizer, funding and three independent contractor agents. They exchange typed messages (`shared/models.py`); the orchestrator fans out to the contractors in parallel and runs one negotiation round.
-- **Payments.** The orchestrator is the seller in the Agent Payment Protocol with embedded Stripe Checkout. Amounts are computed on the server only, a payment counts only after Stripe reports it paid, and the deposit and balance are separate payments. Business model: a 5% booking fee paid by the contractor on each booked job (not charged in this demo).
-- **Reliability.** A contractor that doesn't answer within 15 s is reported in the chat and the other quotes are compared; a photo that can't be downloaded, edited or uploaded falls back to the layout picker; every external call has a fallback reply.
-- **Trustworthy eligibility.** Funding is plain Python over `data/programs.json`; no LLM decides who qualifies. Every program and price carries its source URL and date, and the cards show the source.
+- **Multi-agent orchestration.** Seven agents on Agentverse: an orchestrator that owns the chat and session state, plus risk, visualizer, funding and three independent contractor agents. They exchange typed messages (`shared/models.py`). The orchestrator asks all three contractors at once and runs one negotiation round.
+- **Payments.** The orchestrator is the seller in the Agent Payment Protocol, using embedded Stripe Checkout. Amounts are computed on the server only, a payment counts only after Stripe confirms it, and the deposit and balance are separate payments. Business model: a 5% booking fee paid by the contractor on each booked job (not charged in this demo).
+- **Reliability.** If a contractor doesn't answer within 15 s, Rooted says so in the chat and compares the other quotes. If a photo can't be downloaded, edited or uploaded, Rooted falls back to the layout picker. Every external call has a fallback reply.
+- **Trustworthy eligibility.** Funding is plain Python over `data/programs.json`, so no LLM decides who qualifies. Every program and price carries its source URL and date, and the cards show the source.
 - **Real-world impact.** A family goes from worry to a booked, partly funded fix in one conversation, with the parent's consent built in.
 
 ## Architecture
